@@ -17,12 +17,12 @@ npm run preview    # serve the production build
 
 | Action | How |
 | --- | --- |
-| Tools | `V` select, `P` polygon, `R` rectangle, `O` circle, `L` straight line, `C` curve, `I` add point, `T` label |
+| Tools | `V` select, `P` polygon, `R` rectangle, `O` circle, `L` straight line, `C` curve, `T` label |
 | Polygon | Click points; click the first point, double-click, or `Enter` to finish; `Backspace` removes the last point; `Esc` cancels |
 | Circle | Drag from the center to set the radius |
 | Line boundary | Drag between two points to draw a single straight white line |
 | Curve boundary | Drag to sketch a smooth white curve; curves follow the pointer without grid snapping |
-| Edit | Drag a shape to move it; drag a handle to reshape or resize; use **Add point** on a polygon/rectangle edge to insert a draggable vertex (rectangles become polygons); double-click a polygon edge also inserts a point; `Shift`-click a point to remove it |
+| Edit | Drag a shape to move it; drag a handle to reshape or resize; double-click a polygon edge to add a point; `Shift`-click a point to remove it |
 | Nudge / order | Arrow keys (`Shift` = 5 units); `]` forward, `[` back; `Ctrl+D` duplicate; `Del` delete |
 | Snapping | Toggle Snap and pick a grid size in the top bar; hold `Alt` to ignore snapping |
 | Zoom / pan | Mouse wheel or the zoom buttons; pan with `Space`+drag or middle mouse button |

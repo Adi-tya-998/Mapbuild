@@ -1,4 +1,4 @@
-import { Circle, CirclePlus, Eraser, Minus, MousePointer2, Pentagon, Spline, Square, Type } from 'lucide-react';
+import { Circle, Eraser, Minus, MousePointer2, Pentagon, Spline, Square, Type } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { Tool } from '../../types/map';
 
@@ -52,13 +52,6 @@ export const TOOLS: ToolDef[] = [
     key: 'C',
     icon: Spline,
     hint: 'Drag to sketch a smooth curved boundary. Hold Alt to ignore the grid.',
-  },
-  {
-    id: 'point',
-    label: 'Add point',
-    key: 'I',
-    icon: CirclePlus,
-    hint: 'Click any polygon or rectangle edge to add an editable vertex. Switch to Select to drag the new point.',
   },
   {
     id: 'eraser',

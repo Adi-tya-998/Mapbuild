@@ -104,7 +104,6 @@ export interface EditorState {
   openDocument: (doc: MapDocument) => void;
   resetSheetForOfficialMap: (mapName: string) => void;
   addShape: (shape: MapObject) => void;
-  addPolygonVertex: (id: string, edgeIndex: number, t: number, point: Point) => void;
   finishPolygon: () => void;
   removeSelected: () => void;
   reorderSelected: (dir: 1 | -1) => void;
@@ -394,37 +393,6 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   addShape: (shape) => {
     get().act((doc) => ({ ...doc, shapes: [...doc.shapes, shape] }));
     set({ selectedId: shape.id, selectedEdgeIndex: null });
-  },
-  addPolygonVertex: (id, edgeIndex, t, point) => {
-    get().act((doc) => mapShape(doc, id, (shape) => {
-      if ((shape.type !== 'poly' && shape.type !== 'rect') || edgeIndex < 0 || edgeIndex >= shape.pts.length || t <= 0 || t >= 1) return shape;
-      const pts = shape.pts.slice();
-      pts.splice(edgeIndex + 1, 0, point);
-
-      const splitEdgeValues = <T,>(values: T[] | undefined): T[] | undefined =>
-        values ? [...values.slice(0, edgeIndex + 1), values[edgeIndex], ...values.slice(edgeIndex + 1)] : undefined;
-
-      let edgeGaps = shape.edgeGaps?.map((gaps) => gaps.map(([start, end]) => [start, end] as EdgeGap));
-      if (edgeGaps) {
-        const original = edgeGaps[edgeIndex] ?? [];
-        const left = original.flatMap(([start, end]) => start < t ? [[start / t, Math.min(end, t) / t] as EdgeGap] : []);
-        const right = original.flatMap(([start, end]) => end > t
-          ? [[(Math.max(start, t) - t) / (1 - t), (end - t) / (1 - t)] as EdgeGap]
-          : []);
-        edgeGaps = [...edgeGaps.slice(0, edgeIndex), left, right, ...edgeGaps.slice(edgeIndex + 1)];
-      }
-
-      return {
-        ...shape,
-        type: 'poly',
-        pts,
-        edgeOutlines: splitEdgeValues(shape.edgeOutlines),
-        edgeWidths: splitEdgeValues(shape.edgeWidths),
-        edgeGaps,
-      };
-    }));
-    set({ selectedId: id, selectedEdgeIndex: null });
-    get().showToast('Point added. Select the shape and drag its new vertex to edit it.');
   },
   finishPolygon: () => {
     const { draft, kind } = get();

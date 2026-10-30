@@ -6,28 +6,6 @@ import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
 import type { MapObject, Point, XY } from '../../types/map';
 
 const ERASER_HIT_PX = 8;
-const POINT_HIT_PX = 10;
-
-type PolygonEdgeHit = {
-  shape: Extract<MapObject, { type: 'poly' | 'rect' }>;
-  edgeIndex: number;
-  t: number;
-  point: Point;
-  distance: number;
-};
-
-function nearestPolygonEdge(shapes: MapObject[], p: XY): PolygonEdgeHit | null {
-  let nearest: PolygonEdgeHit | null = null;
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const shape = shapes[i];
-    if (shape.hidden || (shape.type !== 'poly' && shape.type !== 'rect')) continue;
-    const edge = nearestPathEdge(shape.pts, p, true);
-    if (edge && (!nearest || edge.d < nearest.distance)) {
-      nearest = { shape, edgeIndex: edge.i, t: edge.t, point: [edge.x, edge.y], distance: edge.d };
-    }
-  }
-  return nearest;
-}
 
 function nearestBoundary(shape: MapObject, p: XY): { distance: number; point: Point; edgeIndex?: number; t?: number } | null {
   if (shape.type === 'label') return null;
@@ -127,22 +105,6 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
             s.addErasurePoint(nearest.shape.id, nearest.point, true);
           }
           drag = { mode: 'erase', id: nearest.shape.id, activePath: true, edgeIndex: nearest.edgeIndex, lastT: nearest.t };
-        }
-      } else if (s.tool === 'point') {
-        const edge = nearestPolygonEdge(s.doc.shapes, p);
-        if (edge && edge.distance * s.view.scale <= POINT_HIT_PX) {
-          const start = edge.shape.pts[edge.edgeIndex];
-          const end = edge.shape.pts[(edge.edgeIndex + 1) % edge.shape.pts.length];
-          const nearEndpoint = Math.min(
-            Math.hypot(p.x - start[0], p.y - start[1]),
-            Math.hypot(p.x - end[0], p.y - end[1]),
-          ) * s.view.scale <= 4;
-          if (nearEndpoint) {
-            s.select(edge.shape.id);
-            s.showToast('That is already an existing vertex. Click along the edge to add another point.');
-          } else {
-            s.addPolygonVertex(edge.shape.id, edge.edgeIndex, edge.t, edge.point);
-          }
         }
       } else if (s.tool === 'select') {
         const sel = findShape(s.doc.shapes, s.selectedId);
@@ -299,9 +261,6 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const sel = findShape(s.doc.shapes, s.selectedId);
         const overHandle = !!sel && sel.type !== 'label' && hitVertex(sel, p, s.view.scale) >= 0;
         host.style.cursor = overHandle ? 'pointer' : hitTest(s.doc.shapes, p, s.view.scale) ? 'move' : 'default';
-      } else if (s.tool === 'point' && !drag) {
-        const edge = nearestPolygonEdge(s.doc.shapes, p);
-        host.style.cursor = edge && edge.distance * s.view.scale <= POINT_HIT_PX ? 'copy' : 'crosshair';
       }
     };
 

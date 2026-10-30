@@ -31,7 +31,7 @@ export function elevationFill(kind: SurfaceKind, elevation = 0): string {
   return `#${rgb.map((channel) => Math.round(channel + (target - channel) * amount).toString(16).padStart(2, '0')).join('')}`;
 }
 
-export type Tool = 'select' | 'poly' | 'rect' | 'circle' | 'line' | 'curve' | 'eraser' | 'label';
+export type Tool = 'select' | 'poly' | 'rect' | 'circle' | 'line' | 'curve' | 'point' | 'eraser' | 'label';
 export type LabelTone = 'light' | 'dark';
 export type Outline = 'none' | 'white' | 'black';
 /** null is accepted because JSON.stringify serializes undefined array entries as null. */

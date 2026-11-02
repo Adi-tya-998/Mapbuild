@@ -568,7 +568,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       const centerY = viewport.h / 2;
       const zoomX = e.ctrlKey ? e.clientX - host.getBoundingClientRect().left : centerX;
       const zoomY = e.ctrlKey ? e.clientY - host.getBoundingClientRect().top : centerY;
-      st().zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), zoomX, zoomY);
+      st().zoomAt(Math.exp(-dy * 0.0015), zoomX, zoomY);
     };
 
     host.addEventListener('pointerdown', onPointerDown);

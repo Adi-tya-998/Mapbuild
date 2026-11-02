@@ -58,6 +58,8 @@ interface ObjectBase {
   edgeWidths?: number[];
   /** Surface-colored strokes that erase only portions of this object's outline. */
   erasures?: Point[][];
+  /** Transparent brush strokes clipped to this object, removing only the painted area. */
+  cutouts?: Point[][];
   /** True outline openings, stored as normalized intervals for each closed-shape edge. */
   edgeGaps?: EdgeGap[][];
   /** Relative height used to shade filled surfaces; lower Z values render darker. */

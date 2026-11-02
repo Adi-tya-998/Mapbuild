@@ -27,11 +27,11 @@ export function ToolRail() {
         <select
           className="eraser-mode-select form-select form-select-sm"
           aria-label="Eraser mode"
-          title="Choose whether the eraser removes shapes or opens polygon edges"
+          title="Choose between area erasing and polygon-edge openings"
           value={eraserMode}
-          onChange={(event) => setEraserMode(event.target.value as 'objects' | 'edges')}
+          onChange={(event) => setEraserMode(event.target.value as 'area' | 'edges')}
         >
-          <option value="objects">Erase shapes</option>
+          <option value="area">Erase area</option>
           <option value="edges">Polygon edges only</option>
         </select>
       )}

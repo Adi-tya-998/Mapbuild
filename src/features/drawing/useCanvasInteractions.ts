@@ -58,9 +58,9 @@ function nearestBoundary(shape: MapObject, p: XY): { distance: number; point: Po
 
 type Drag =
   | { mode: 'pan'; x: number; y: number }
-  | { mode: 'move'; start: XY; members: Array<{ id: string; pts: Point[] }> }
+  | { mode: 'move'; start: XY; members: Array<{ id: string; pts: Point[]; erasures?: Point[][]; cutouts?: Point[][] }> }
   | { mode: 'erase-boundaries'; onlyPolygon: boolean; paths: Map<string, { activePath: boolean; edgeIndex?: number; lastT?: number }> }
-  | { mode: 'erase-objects'; ids: Set<string>; checkpointed: boolean }
+  | { mode: 'erase-area'; last: XY; active: Map<string, boolean>; checkpointed: boolean }
   | { mode: 'box-select'; start: XY; end: XY }
   | { mode: 'vertex'; id: string; index: number };
 
@@ -75,6 +75,36 @@ function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
     return (nearestPathEdge(shape.pts, p, false)?.d ?? Infinity) <= radius + (shape.outlineWidth ?? 0.75) / 2;
   }
   return pointInPolygon(p, shape.pts) || (nearestPathEdge(shape.pts, p, true)?.d ?? Infinity) <= radius;
+}
+
+function eraseAreaAlongPath(
+  s: ReturnType<typeof useEditorStore.getState>,
+  from: XY,
+  to: XY,
+  drag: Extract<Drag, { mode: 'erase-area' }>,
+): void {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(0.35, ERASER_WIDTH / 3)));
+  const updates: Array<{ id: string; point: Point; startNewStroke: boolean }> = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const point: Point = [from.x + dx * t, from.y + dy * t];
+    const hits = s.doc.shapes.filter((shape) => shapeUnderBrush(shape, { x: point[0], y: point[1] }, ERASER_WIDTH / 2));
+    const hitIds = new Set(hits.map((shape) => shape.id));
+    for (const id of drag.active.keys()) if (!hitIds.has(id)) drag.active.set(id, false);
+    for (const shape of hits) {
+      updates.push({ id: shape.id, point, startNewStroke: !drag.active.get(shape.id) });
+      drag.active.set(shape.id, true);
+    }
+  }
+  if (!updates.length) return;
+  if (!drag.checkpointed) {
+    s.select(null);
+    s.checkpoint();
+    drag.checkpointed = true;
+  }
+  s.addCutoutPoints(updates);
 }
 
 function shapeIntersectsBox(shape: MapObject, a: XY, b: XY): boolean {
@@ -202,14 +232,10 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       s.setCursor(sp, p);
 
       if (s.tool === 'eraser') {
-        if (!e.ctrlKey && s.eraserMode === 'objects') {
-          const ids = new Set(s.doc.shapes.filter((shape) => shapeUnderBrush(shape, p, ERASER_WIDTH / 2)).map((shape) => shape.id));
-          if (ids.size) {
-            s.select(null);
-            s.checkpoint();
-            s.liveEdit((doc) => ({ ...doc, shapes: doc.shapes.filter((shape) => !ids.has(shape.id)) }));
-          }
-          drag = { mode: 'erase-objects', ids, checkpointed: ids.size > 0 };
+        if (!e.ctrlKey && s.eraserMode === 'area') {
+          const areaDrag: Extract<Drag, { mode: 'erase-area' }> = { mode: 'erase-area', last: p, active: new Map(), checkpointed: false };
+          eraseAreaAlongPath(s, p, p, areaDrag);
+          drag = areaDrag;
           return;
         }
         const onlyPolygon = !e.ctrlKey && s.eraserMode === 'edges';
@@ -271,7 +297,12 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           }
           s.checkpoint();
           const members = hit.groupId ? s.doc.shapes.filter((shape) => shape.groupId === hit.groupId) : [hit];
-          drag = { mode: 'move', start: p, members: members.map((shape) => ({ id: shape.id, pts: shape.pts.map((q) => [q[0], q[1]] as Point) })) };
+          drag = { mode: 'move', start: p, members: members.map((shape) => ({
+            id: shape.id,
+            pts: shape.pts.map((q) => [q[0], q[1]] as Point),
+            erasures: shape.erasures?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
+            cutouts: shape.cutouts?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
+          })) };
         } else {
           s.select(null);
         }
@@ -328,19 +359,10 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       if (drag?.mode === 'box-select') {
         drag = { ...drag, end: p };
         s.setSelectionBox({ a: [drag.start.x, drag.start.y], b: [p.x, p.y] });
-      } else if (drag?.mode === 'erase-objects') {
+      } else if (drag?.mode === 'erase-area') {
         const d = drag;
-        const nextIds = s.doc.shapes.filter((shape) => !d.ids.has(shape.id) && shapeUnderBrush(shape, p, ERASER_WIDTH / 2)).map((shape) => shape.id);
-        if (nextIds.length) {
-          nextIds.forEach((id) => d.ids.add(id));
-          if (!d.checkpointed) {
-            s.select(null);
-            s.checkpoint();
-            d.checkpointed = true;
-          }
-          const ids = new Set(nextIds);
-          s.liveEdit((doc) => ({ ...doc, shapes: doc.shapes.filter((shape) => !ids.has(shape.id)) }));
-        }
+        eraseAreaAlongPath(s, d.last, p, d);
+        d.last = p;
       } else if (drag?.mode === 'erase-boundaries') {
         const hits = boundaryHits(s.doc.shapes, p, s.view.scale, drag.onlyPolygon);
         eraseBoundaryHits(s, hits, drag.paths);
@@ -353,10 +375,15 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const o = snapOpts();
         const dx = o.snap && !o.alt ? snapValue(f[0] + rx, o) - f[0] : Math.round(rx * 10) / 10;
         const dy = o.snap && !o.alt ? snapValue(f[1] + ry, o) - f[1] : Math.round(ry * 10) / 10;
-        const originals = new Map(d.members.map((member) => [member.id, member.pts]));
+        const originals = new Map(d.members.map((member) => [member.id, member]));
         s.liveEdit((doc) => ({ ...doc, shapes: doc.shapes.map((shape) => {
-          const pts = originals.get(shape.id);
-          return pts ? { ...shape, pts: pts.map(([x, y]) => [x + dx, y + dy] as Point) } : shape;
+          const original = originals.get(shape.id);
+          return original ? {
+            ...shape,
+            pts: original.pts.map(([x, y]) => [x + dx, y + dy] as Point),
+            ...(original.erasures ? { erasures: original.erasures.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
+            ...(original.cutouts ? { cutouts: original.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
+          } : shape;
         }) }));
       } else if (drag?.mode === 'vertex') {
         const d = drag;
@@ -449,7 +476,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         }
         drag = null;
         if (wasPan) host.style.cursor = baseCursor();
-        else if (finishedDrag.mode === 'erase-boundaries' || (finishedDrag.mode === 'erase-objects' && finishedDrag.checkpointed)) s.commit();
+        else if (finishedDrag.mode === 'erase-boundaries' || (finishedDrag.mode === 'erase-area' && finishedDrag.checkpointed)) s.commit();
       }
     };
 

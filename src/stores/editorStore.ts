@@ -39,7 +39,7 @@ export interface EditorState {
   selectedEdgeIndex: number | null;
   marqueeSelection: string[];
   selectionBox: { a: Point; b: Point } | null;
-  eraserMode: 'objects' | 'edges';
+  eraserMode: 'area' | 'edges';
   groupingSelection: string[];
   tool: Tool;
   kind: SurfaceKind;
@@ -80,7 +80,7 @@ export interface EditorState {
   select: (id: string | null) => void;
   setMarqueeSelection: (ids: string[]) => void;
   setSelectionBox: (box: { a: Point; b: Point } | null) => void;
-  setEraserMode: (mode: 'objects' | 'edges') => void;
+  setEraserMode: (mode: 'area' | 'edges') => void;
   selectEdge: (index: number | null) => void;
   toggleGroupingSelection: (id: string) => void;
   groupSelectedLayers: () => void;
@@ -123,6 +123,7 @@ export interface EditorState {
   setSelectedOutline: (outline: Outline) => void;
   setSelectedEdgeOutline: (outline: Outline) => void;
   addErasurePoint: (id: string, point: Point, startNewStroke: boolean) => void;
+  addCutoutPoints: (updates: Array<{ id: string; point: Point; startNewStroke: boolean }>) => void;
   addPolygonEdgeGap: (id: string, edgeIndex: number, t: number, previousT?: number) => void;
   finalizePolygonEdgeGaps: (id: string) => void;
   setBackground: (bg: Background | null) => void;
@@ -157,7 +158,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   selectedEdgeIndex: null,
   marqueeSelection: [],
   selectionBox: null,
-  eraserMode: 'objects',
+  eraserMode: 'area',
   groupingSelection: [],
   tool: 'select',
   kind: 'floor',
@@ -468,7 +469,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     const sel = findShape(s.doc.shapes, s.selectedId);
     if (!sel) return;
     const pts = sel.pts.map(([x, y]) => [Math.min(SHEET_SIZE, x + 6), Math.min(SHEET_SIZE, y + 6)] as Point);
-    s.addShape({ ...sel, id: createId(), pts });
+    const offsetStrokes = (strokes: Point[][] | undefined) => strokes?.map((stroke) => stroke.map(([x, y]) => [Math.min(SHEET_SIZE, x + 6), Math.min(SHEET_SIZE, y + 6)] as Point));
+    s.addShape({ ...sel, id: createId(), pts, erasures: offsetStrokes(sel.erasures), cutouts: offsetStrokes(sel.cutouts) });
   },
   nudgeSelected: (dx, dy) => {
     const s = get();
@@ -476,7 +478,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     if (!selected) return;
     const members = selected.groupId ? s.doc.shapes.filter((shape) => shape.groupId === selected.groupId) : [selected];
     const ids = new Set(members.map((shape) => shape.id));
-    s.act((doc) => ({ ...doc, shapes: doc.shapes.map((shape) => ids.has(shape.id) ? { ...shape, pts: shape.pts.map(([x, y]) => [x + dx, y + dy] as Point) } : shape) }));
+    s.act((doc) => ({ ...doc, shapes: doc.shapes.map((shape) => ids.has(shape.id) ? {
+      ...shape,
+      pts: shape.pts.map(([x, y]) => [x + dx, y + dy] as Point),
+      ...(shape.erasures ? { erasures: shape.erasures.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
+      ...(shape.cutouts ? { cutouts: shape.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
+    } : shape) }));
   },
   toggleHidden: (id) => {
     get().act((doc) => mapShape(doc, id, (o) => ({ ...o, hidden: o.hidden ? undefined : true })));
@@ -525,6 +532,25 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       }
       return { ...o, erasures };
     }));
+  },
+  addCutoutPoints: (updates) => {
+    if (!updates.length) return;
+    get().liveEdit((doc) => {
+      const cutoutsById = new Map<string, Point[][]>();
+      for (const { id, point, startNewStroke } of updates) {
+        const shape = doc.shapes.find((item) => item.id === id);
+        if (!shape) continue;
+        const cutouts = cutoutsById.get(id) ?? (shape.cutouts ?? []).map((stroke) => stroke.map(([x, y]) => [x, y] as Point));
+        const last = cutouts[cutouts.length - 1];
+        if (startNewStroke || !last || last.length >= 500) {
+          if (cutouts.length < 500) cutouts.push([point]);
+        } else if (Math.hypot(point[0] - last[last.length - 1][0], point[1] - last[last.length - 1][1]) >= 0.3 && last.length < 500) {
+          last.push(point);
+        }
+        cutoutsById.set(id, cutouts);
+      }
+      return { ...doc, shapes: doc.shapes.map((shape) => cutoutsById.has(shape.id) ? { ...shape, cutouts: cutoutsById.get(shape.id) } : shape) };
+    });
   },
   addPolygonEdgeGap: (id, edgeIndex, t, previousT) => {
     get().liveEdit((doc) => mapShape(doc, id, (shape) => {

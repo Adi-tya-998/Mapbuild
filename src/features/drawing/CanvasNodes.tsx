@@ -1,5 +1,6 @@
 import { Fragment, memo } from 'react';
-import { Circle, Image as KonvaImage, Line, Rect, Shape, Text } from 'react-konva';
+import type { ReactElement } from 'react';
+import { Circle, Image as KonvaImage, Layer, Line, Rect, Shape, Text } from 'react-konva';
 import { LABEL_FONT, HANDLE_PX, circleRadius, flatten, labelBox, rectPts } from '../../lib/geometry';
 import { containRect } from '../../lib/image';
 import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH, elevationFill, SHEET_SIZE, SURFACES } from '../../types/map';
@@ -57,54 +58,79 @@ interface ShapesProps {
   fontTick: number;
 }
 
+function ShapeContent({ s }: { s: MapObject }) {
+  if (s.type === 'label') return <LabelNode s={s} />;
+  const fill = elevationFill(s.kind, s.elevation);
+  const outlineFor = (index: number, fallback: 'none' | 'white' | 'black') => s.edgeOutlines?.[index] ?? s.outline ?? fallback;
+  const widthFor = (index: number) => s.edgeWidths?.[index] ?? s.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
+  if (s.type === 'circle') {
+    const outline = outlineFor(0, 'none');
+    const outlineWidth = widthFor(0);
+    return <>
+      <Circle x={s.pts[0][0]} y={s.pts[0][1]} radius={circleRadius(s.pts)} fill={fill} stroke={outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : (s.outline === undefined && s.edgeOutlines?.[0] === undefined ? fill : undefined)} strokeWidth={outline === 'white' || outline === 'black' ? outlineWidth : outline === 'none' ? (s.outline === undefined && s.edgeOutlines?.[0] === undefined ? 0.35 : 0) : 0} perfectDrawEnabled={false} />
+      <SurfaceErasures erasures={s.erasures} kind={s.kind} fill={fill} />
+    </>;
+  }
+  if (s.type === 'line' || s.type === 'curve') {
+    const points = flatten(s.pts);
+    const outline = outlineFor(0, 'white');
+    const outlineWidth = widthFor(0);
+    if (outline === 'none') return <SurfaceErasures erasures={s.erasures} kind={s.kind} />;
+    if (outline === 'black') return <><Line points={points} stroke="#1d1d1d" strokeWidth={outlineWidth} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} /><SurfaceErasures erasures={s.erasures} kind={s.kind} /></>;
+    return <>
+      <Line points={points} stroke="rgba(25,35,38,.8)" strokeWidth={outlineWidth + 0.8} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} />
+      <Line points={points} stroke="#ffffff" strokeWidth={outlineWidth} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} />
+      <SurfaceErasures erasures={s.erasures} kind={s.kind} />
+    </>;
+  }
+  return <>
+    <Line points={flatten(s.pts)} closed fill={fill} perfectDrawEnabled={false} />
+    {s.pts.map((p, i) => {
+      const q = s.pts[(i + 1) % s.pts.length];
+      const outline = s.edgeOutlines?.[i] ?? s.outline;
+      if (outline === 'none') return null;
+      const stroke = outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : fill;
+      const outlineWidth = s.edgeWidths?.[i] ?? s.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
+      return <Fragment key={i}>{splitEdge(p, q, s.edgeGaps?.[i]).map((segment, j) => (
+        <Line key={j} points={flatten(segment)} stroke={stroke} strokeWidth={outline === 'white' || outline === 'black' ? outlineWidth : 0.35} lineCap="butt" perfectDrawEnabled={false} />
+      ))}</Fragment>;
+    })}
+    <SurfaceErasures erasures={s.erasures} kind={s.kind} fill={fill} />
+  </>;
+}
+
+function Cutouts({ cutouts }: { cutouts: Point[][] | undefined }) {
+  if (!cutouts?.length) return null;
+  return <>
+    {cutouts.map((stroke, i) => stroke.length === 1
+      ? <Circle key={i} x={stroke[0][0]} y={stroke[0][1]} radius={ERASER_WIDTH / 2} fill="#000000" globalCompositeOperation="destination-out" />
+      : stroke.length > 1 && <Line key={i} points={flatten(stroke)} stroke="#000000" strokeWidth={ERASER_WIDTH} lineCap="round" lineJoin="round" globalCompositeOperation="destination-out" perfectDrawEnabled={false} />)}
+  </>;
+}
+
 export const SheetShapes = memo(function SheetShapes({ shapes }: ShapesProps) {
-  return (
-    <>
-      {shapes.map((s) => {
-        if (s.hidden) return null;
-        if (s.type === 'label') return <LabelNode key={s.id} s={s} />;
-        const fill = elevationFill(s.kind, s.elevation);
-        const outlineFor = (index: number, fallback: 'none' | 'white' | 'black') => s.edgeOutlines?.[index] ?? s.outline ?? fallback;
-        const widthFor = (index: number) => s.edgeWidths?.[index] ?? s.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
-        if (s.type === 'circle') {
-          const outline = outlineFor(0, 'none');
-          const outlineWidth = widthFor(0);
-          return <Fragment key={s.id}>
-            <Circle x={s.pts[0][0]} y={s.pts[0][1]} radius={circleRadius(s.pts)} fill={fill} stroke={outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : (s.outline === undefined && s.edgeOutlines?.[0] === undefined ? fill : undefined)} strokeWidth={outline === 'white' || outline === 'black' ? outlineWidth : outline === 'none' ? (s.outline === undefined && s.edgeOutlines?.[0] === undefined ? 0.35 : 0) : 0} perfectDrawEnabled={false} />
-            <SurfaceErasures erasures={s.erasures} kind={s.kind} fill={fill} />
-          </Fragment>;
-        }
-        if (s.type === 'line' || s.type === 'curve') {
-          const points = flatten(s.pts);
-          const outline = outlineFor(0, 'white');
-          const outlineWidth = widthFor(0);
-          if (outline === 'none') return <SurfaceErasures key={s.id} erasures={s.erasures} kind={s.kind} />;
-          if (outline === 'black') return <Fragment key={s.id}><Line points={points} stroke="#1d1d1d" strokeWidth={outlineWidth} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} /><SurfaceErasures erasures={s.erasures} kind={s.kind} /></Fragment>;
-          return (
-            <Fragment key={s.id}>
-              <Line points={points} stroke="rgba(25,35,38,.8)" strokeWidth={outlineWidth + 0.8} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} />
-              <Line points={points} stroke="#ffffff" strokeWidth={outlineWidth} lineCap="round" lineJoin="round" tension={s.type === 'curve' ? 0.5 : 0} perfectDrawEnabled={false} />
-              <SurfaceErasures erasures={s.erasures} kind={s.kind} />
-            </Fragment>
-          );
-        }
-        return <Fragment key={s.id}>
-          <Line points={flatten(s.pts)} closed fill={fill} perfectDrawEnabled={false} />
-          {s.pts.map((p, i) => {
-            const q = s.pts[(i + 1) % s.pts.length];
-            const outline = s.edgeOutlines?.[i] ?? s.outline;
-            if (outline === 'none') return null;
-            const stroke = outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : fill;
-            const outlineWidth = s.edgeWidths?.[i] ?? s.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
-            return <Fragment key={i}>{splitEdge(p, q, s.edgeGaps?.[i]).map((segment, j) => (
-              <Line key={j} points={flatten(segment)} stroke={stroke} strokeWidth={outline === 'white' || outline === 'black' ? outlineWidth : 0.35} lineCap="butt" perfectDrawEnabled={false} />
-            ))}</Fragment>;
-          })}
-          <SurfaceErasures erasures={s.erasures} kind={s.kind} fill={fill} />
-        </Fragment>;
-      })}
-    </>
-  );
+  const layers: ReactElement[] = [];
+  let regularShapes: ReactElement[] = [];
+  let batchIndex = 0;
+  const flushRegularShapes = () => {
+    if (!regularShapes.length) return;
+    layers.push(<Layer key={`map-shapes-${batchIndex++}`} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>{regularShapes}</Layer>);
+    regularShapes = [];
+  };
+  for (const shape of shapes) {
+    if (shape.hidden) continue;
+    if (shape.cutouts?.length) {
+      flushRegularShapes();
+      layers.push(<Layer key={shape.id} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>
+        <ShapeContent s={shape} />
+        <Cutouts cutouts={shape.cutouts} />
+      </Layer>);
+    } else {
+      regularShapes.push(<ShapeContent key={shape.id} s={shape} />);
+    }
+  }
+  flushRegularShapes();
+  return <>{layers}</>;
 });
 
 function SurfaceErasures({ erasures, kind, fill = SURFACES[kind].fill }: { erasures: Point[][] | undefined; kind: SurfaceKind; fill?: string }) {

@@ -29,6 +29,7 @@ const edgeGaps = z.array(z.array(z.tuple([
   z.number().finite().transform((value) => clamp(value, 0, 1)),
 ])).max(500)).max(MAX_POINTS).optional();
 const erasures = z.array(z.array(point).min(1).max(MAX_POINTS)).max(500).optional();
+const cutouts = z.array(z.array(point).min(1).max(MAX_POINTS)).max(500).optional();
 const groupId = z.string().max(100).optional();
 
 const labelSchema = z
@@ -48,6 +49,7 @@ const labelSchema = z
     edgeWidths,
     edgeGaps,
     erasures,
+    cutouts,
   })
   .transform(
     (s): MapObject => ({
@@ -67,6 +69,7 @@ const labelSchema = z
       edgeWidths: s.edgeWidths,
       edgeGaps: s.edgeGaps as EdgeGap[][] | undefined,
       erasures: s.erasures as Point[][] | undefined,
+      cutouts: s.cutouts as Point[][] | undefined,
     }),
   );
 
@@ -84,6 +87,7 @@ const lineSchema = z.object({
   edgeWidths,
   edgeGaps,
   erasures,
+  cutouts,
 }).transform((s): MapObject => ({
   id: createId(),
   name: s.name,
@@ -99,6 +103,7 @@ const lineSchema = z.object({
   edgeWidths: s.edgeWidths,
   edgeGaps: s.edgeGaps as EdgeGap[][] | undefined,
   erasures: s.erasures as Point[][] | undefined,
+  cutouts: s.cutouts as Point[][] | undefined,
 }));
 
 // Files from the original editor flag rectangles with `rect: true`; anything else with a rect type becomes a polygon.
@@ -119,6 +124,7 @@ const filledSchema = z
     edgeWidths,
     edgeGaps,
     erasures,
+    cutouts,
   })
   .transform((s): MapObject => {
     const isRect = s.type === 'rect' && s.pts.length === 4 && s.rect === true;
@@ -138,6 +144,7 @@ const filledSchema = z
       edgeWidths: s.edgeWidths,
       edgeGaps: s.edgeGaps as EdgeGap[][] | undefined,
       erasures: s.erasures as Point[][] | undefined,
+      cutouts: s.cutouts as Point[][] | undefined,
     };
   });
 
@@ -156,6 +163,7 @@ const circleSchema = z.object({
   edgeWidths,
   edgeGaps,
   erasures,
+  cutouts,
 }).transform((s): MapObject => ({
   id: createId(),
   name: s.name,
@@ -172,6 +180,7 @@ const circleSchema = z.object({
   edgeWidths: s.edgeWidths,
   edgeGaps: s.edgeGaps as EdgeGap[][] | undefined,
   erasures: s.erasures as Point[][] | undefined,
+  cutouts: s.cutouts as Point[][] | undefined,
 }));
 
 const shapeSchema = z.union([labelSchema, lineSchema, circleSchema, filledSchema]);

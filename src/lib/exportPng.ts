@@ -84,79 +84,122 @@ function paintErasures(c: CanvasRenderingContext2D, s: Exclude<MapObject, LabelO
   c.restore();
 }
 
+function paintCutouts(c: CanvasRenderingContext2D, cutouts: Point[][]) {
+  c.save();
+  c.globalCompositeOperation = 'destination-out';
+  c.strokeStyle = '#000000';
+  c.fillStyle = '#000000';
+  c.lineWidth = ERASER_WIDTH;
+  c.lineCap = 'round';
+  c.lineJoin = 'round';
+  for (const stroke of cutouts) {
+    if (stroke.length < 2) {
+      const point = stroke[0];
+      c.beginPath();
+      c.arc(point[0], point[1], ERASER_WIDTH / 2, 0, Math.PI * 2);
+      c.fill();
+      continue;
+    }
+    c.beginPath();
+    c.moveTo(stroke[0][0], stroke[0][1]);
+    for (let i = 1; i < stroke.length; i++) c.lineTo(stroke[i][0], stroke[i][1]);
+    c.stroke();
+  }
+  c.restore();
+}
+
+function paintShape(c: CanvasRenderingContext2D, s: MapObject) {
+  if (s.type === 'label') {
+    paintLabel(c, s);
+    return;
+  }
+  const fill = SURFACES[s.kind].fill;
+  if (s.type === 'line' || s.type === 'curve') {
+    if (s.type === 'curve') traceCurve(c, s.pts);
+    else {
+      c.beginPath();
+      c.moveTo(s.pts[0][0], s.pts[0][1]);
+      c.lineTo(s.pts[1][0], s.pts[1][1]);
+    }
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    const outline = s.edgeOutlines?.[0] ?? s.outline ?? 'white';
+    if (outline === 'none') return;
+    if (outline === 'black') {
+      c.strokeStyle = '#1d1d1d';
+      c.lineWidth = 1.8;
+    } else {
+      c.strokeStyle = 'rgba(25,35,38,.8)';
+      c.lineWidth = 2.8;
+      c.stroke();
+      c.strokeStyle = '#ffffff';
+      c.lineWidth = 1.5;
+    }
+    c.stroke();
+    paintErasures(c, s);
+    return;
+  }
+  if (s.type === 'circle') {
+    c.beginPath();
+    c.arc(s.pts[0][0], s.pts[0][1], circleRadius(s.pts), 0, Math.PI * 2);
+    c.fillStyle = fill;
+    c.fill();
+    const outline = s.edgeOutlines?.[0] ?? s.outline;
+    if (outline === 'white' || outline === 'black') {
+      c.strokeStyle = outline === 'white' ? '#ffffff' : '#1d1d1d';
+      c.lineWidth = 1.5;
+      c.stroke();
+    } else if (outline === undefined) {
+      c.strokeStyle = fill;
+      c.lineWidth = 0.35;
+      c.stroke();
+    }
+    paintErasures(c, s);
+    return;
+  }
+  tracePath(c, s.pts);
+  c.fillStyle = fill;
+  c.fill();
+  c.lineCap = 'butt';
+  c.lineJoin = 'miter';
+  for (let i = 0; i < s.pts.length; i++) {
+    const outline = s.edgeOutlines?.[i] ?? s.outline;
+    if (outline === 'none') continue;
+    const a = s.pts[i];
+    const b = s.pts[(i + 1) % s.pts.length];
+    c.strokeStyle = outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : fill;
+    c.lineWidth = outline === 'white' || outline === 'black' ? (s.edgeWidths?.[i] ?? s.outlineWidth ?? 1.5) : 0.35;
+    c.lineCap = 'butt';
+    for (const segment of splitEdge(a, b, s.edgeGaps?.[i])) {
+      c.beginPath();
+      c.moveTo(segment[0][0], segment[0][1]);
+      c.lineTo(segment[1][0], segment[1][1]);
+      c.stroke();
+    }
+  }
+  paintErasures(c, s);
+}
+
 /** Paint only the created map (no sheet fill, reference image, grid, or editor overlays). */
 export function paintSheet(c: CanvasRenderingContext2D, doc: MapDocument) {
   for (const s of doc.shapes) {
     if (s.hidden) continue;
-    if (s.type === 'label') {
-      paintLabel(c, s);
+    if (!s.cutouts?.length) {
+      paintShape(c, s);
       continue;
     }
-    const fill = SURFACES[s.kind].fill;
-    if (s.type === 'line' || s.type === 'curve') {
-      if (s.type === 'curve') traceCurve(c, s.pts);
-      else {
-        c.beginPath();
-        c.moveTo(s.pts[0][0], s.pts[0][1]);
-        c.lineTo(s.pts[1][0], s.pts[1][1]);
-      }
-      c.lineCap = 'round';
-      c.lineJoin = 'round';
-      const outline = s.edgeOutlines?.[0] ?? s.outline ?? 'white';
-      if (outline === 'none') continue;
-      if (outline === 'black') {
-        c.strokeStyle = '#1d1d1d';
-        c.lineWidth = 1.8;
-      } else {
-        c.strokeStyle = 'rgba(25,35,38,.8)';
-        c.lineWidth = 2.8;
-        c.stroke();
-        c.strokeStyle = '#ffffff';
-        c.lineWidth = 1.5;
-      }
-      c.stroke();
-      paintErasures(c, s);
-      continue;
-    }
-    if (s.type === 'circle') {
-      c.beginPath();
-      c.arc(s.pts[0][0], s.pts[0][1], circleRadius(s.pts), 0, Math.PI * 2);
-      c.fillStyle = fill;
-      c.fill();
-      const outline = s.edgeOutlines?.[0] ?? s.outline;
-      if (outline === 'white' || outline === 'black') {
-        c.strokeStyle = outline === 'white' ? '#ffffff' : '#1d1d1d';
-        c.lineWidth = 1.5;
-        c.stroke();
-      } else if (outline === undefined) {
-        c.strokeStyle = fill;
-        c.lineWidth = 0.35;
-        c.stroke();
-      }
-      paintErasures(c, s);
-      continue;
-    }
-    tracePath(c, s.pts);
-    c.fillStyle = fill;
-    c.fill();
-    c.lineCap = 'butt';
-    c.lineJoin = 'miter';
-    for (let i = 0; i < s.pts.length; i++) {
-      const outline = s.edgeOutlines?.[i] ?? s.outline;
-      if (outline === 'none') continue;
-      const a = s.pts[i];
-      const b = s.pts[(i + 1) % s.pts.length];
-      c.strokeStyle = outline === 'white' ? '#ffffff' : outline === 'black' ? '#1d1d1d' : fill;
-      c.lineWidth = outline === 'white' || outline === 'black' ? (s.edgeWidths?.[i] ?? s.outlineWidth ?? 1.5) : 0.35;
-      c.lineCap = 'butt';
-      for (const segment of splitEdge(a, b, s.edgeGaps?.[i])) {
-        c.beginPath();
-        c.moveTo(segment[0][0], segment[0][1]);
-        c.lineTo(segment[1][0], segment[1][1]);
-        c.stroke();
-      }
-    }
-    paintErasures(c, s);
+    const isolated = document.createElement('canvas');
+    isolated.width = c.canvas.width;
+    isolated.height = c.canvas.height;
+    const isolatedCtx = isolated.getContext('2d');
+    if (!isolatedCtx) continue;
+    isolatedCtx.setTransform(c.getTransform());
+    paintShape(isolatedCtx, s);
+    paintCutouts(isolatedCtx, s.cutouts);
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(isolated, 0, 0);
+    c.restore();
   }
 }
 

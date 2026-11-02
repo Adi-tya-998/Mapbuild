@@ -65,7 +65,7 @@ export const TOOLS: ToolDef[] = [
     label: 'Eraser',
     key: 'E',
     icon: Eraser,
-    hint: 'Drag to erase whole shapes. Hold Ctrl and left-drag to erase boundaries; Ctrl+right-drag selects a box of layers for Delete. Use the mode menu for polygon-edge openings.',
+    hint: 'Left-drag to erase only the swept area. Hold Ctrl and left-drag to erase boundaries; Ctrl+right-drag selects a box of layers for Delete. Use the mode menu for polygon-edge openings.',
   },
   {
     id: 'label',

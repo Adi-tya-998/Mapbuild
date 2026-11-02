@@ -152,8 +152,8 @@ export function MapCanvas() {
           <Layer listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>
             <BackgroundImage image={bgImage} background={doc.background} />
             {grid && <GridLines gridSize={gridSize} scale={scale} />}
-            <SheetShapes shapes={doc.shapes} fontTick={fontTick} />
           </Layer>
+          <SheetShapes shapes={doc.shapes} fontTick={fontTick} />
           <Layer listening={false}>
             <EditorOverlay
               selected={selected}

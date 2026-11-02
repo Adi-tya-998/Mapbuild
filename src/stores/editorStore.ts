@@ -182,7 +182,7 @@ function clippedEdgeStyles(shape: Extract<MapObject, { type: 'poly' | 'rect' }>,
       const end = shape.pts[(edgeIndex + 1) % shape.pts.length];
       return pointSegmentDistance(a, start, end) < 1e-5 && pointSegmentDistance(b, start, end) < 1e-5;
     });
-    edgeOutlines.push(sourceEdge >= 0 ? (shape.edgeOutlines?.[sourceEdge] ?? shape.outline) : shape.outline);
+    edgeOutlines.push(sourceEdge >= 0 ? (shape.edgeOutlines?.[sourceEdge] ?? shape.outline) : 'none');
     edgeWidths.push(sourceEdge >= 0 ? (shape.edgeWidths?.[sourceEdge] ?? shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH) : (shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH));
   }
   return { edgeOutlines, edgeWidths };

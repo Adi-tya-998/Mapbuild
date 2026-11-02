@@ -25,6 +25,28 @@ export function circleRadius(pts: Point[]): number {
   return pts.length < 2 ? 0 : Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
 }
 
+export function pointsCenter(pts: Point[]): Point {
+  const xs = pts.map(([x]) => x);
+  const ys = pts.map(([, y]) => y);
+  return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+}
+
+export function rotationHandlePoint(pts: Point[], scale: number): Point {
+  const xs = pts.map(([x]) => x);
+  const ys = pts.map(([, y]) => y);
+  return [(Math.min(...xs) + Math.max(...xs)) / 2, Math.min(...ys) - 20 / scale];
+}
+
+export function rotatePoints(pts: Point[], center: Point, angle: number): Point[] {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return pts.map(([x, y]) => {
+    const dx = x - center[0];
+    const dy = y - center[1];
+    return [center[0] + dx * cos - dy * sin, center[1] + dx * sin + dy * cos];
+  });
+}
+
 export interface SnapOptions {
   snap: boolean;
   /** Alt held: ignore snapping and round to 0.1 unit instead. */

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
-import { circleRadius, hitTest, hitVertex, labelBox, moveRectCorner, nearestEdge, nearestPathEdge, pointInPolygon, rectPts, snapValue, HIT_PX } from '../../lib/geometry';
+import { circleRadius, hitTest, hitVertex, labelBox, moveRectCorner, nearestEdge, nearestPathEdge, pointInPolygon, pointsCenter, rectPts, rotatePoints, rotationHandlePoint, snapValue, HIT_PX } from '../../lib/geometry';
 import { createId } from '../../lib/id';
 import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
 import { ERASER_WIDTH } from '../../types/map';
@@ -63,7 +63,22 @@ type Drag =
   | { mode: 'erase-area'; last: XY; active: Map<string, boolean>; checkpointed: boolean }
   | { mode: 'box-select'; start: XY; end: XY }
   | { mode: 'detach-area'; start: XY; end: XY }
+  | { mode: 'rotate'; id: string; center: Point; startAngle: number; original: MapObject }
   | { mode: 'vertex'; id: string; index: number };
+
+function rotateShape(shape: MapObject, center: Point, angle: number): MapObject {
+  if (shape.type === 'label' || shape.type === 'circle') return shape;
+  const pts = rotatePoints(shape.pts, center, angle);
+  const holes = shape.holes?.map((ring) => rotatePoints(ring, center, angle));
+  const rotateStrokes = (strokes: Point[][] | undefined) => strokes?.map((stroke) => rotatePoints(stroke, center, angle));
+  const geometry = {
+    pts,
+    ...(holes ? { holes } : {}),
+    ...(shape.erasures ? { erasures: rotateStrokes(shape.erasures) } : {}),
+    ...(shape.cutouts ? { cutouts: rotateStrokes(shape.cutouts) } : {}),
+  };
+  return shape.type === 'rect' ? { ...shape, ...geometry, type: 'poly' } : { ...shape, ...geometry };
+}
 
 function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
   if (shape.hidden) return false;
@@ -277,6 +292,17 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           }
         }
       } else if (s.tool === 'select') {
+        const selected = findShape(s.doc.shapes, s.selectedId);
+        if (selected && (selected.type === 'poly' || selected.type === 'rect' || selected.type === 'line' || selected.type === 'curve')) {
+          const [handleX, handleY] = rotationHandlePoint(selected.pts, s.view.scale);
+          if (Math.hypot(p.x - handleX, p.y - handleY) * s.view.scale <= 12) {
+            const center = pointsCenter(selected.pts);
+            s.checkpoint();
+            drag = { mode: 'rotate', id: selected.id, center, startAngle: Math.atan2(p.y - center[1], p.x - center[0]), original: selected };
+            host.style.cursor = 'grabbing';
+            return;
+          }
+        }
         const selectedShapes = s.selectedId
           ? [findShape(s.doc.shapes, s.selectedId)]
           : s.marqueeSelection.map((id) => findShape(s.doc.shapes, id)).reverse();
@@ -421,6 +447,12 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
             ...(original.cutouts ? { cutouts: original.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
           } : shape;
         }) }));
+      } else if (drag?.mode === 'rotate') {
+        const d = drag;
+        let angle = Math.atan2(p.y - d.center[1], p.x - d.center[0]) - d.startAngle;
+        if (angle > Math.PI) angle -= Math.PI * 2;
+        if (angle < -Math.PI) angle += Math.PI * 2;
+        s.liveEdit((doc) => mapShape(doc, d.id, (shape) => rotateShape(d.original, d.center, angle)));
       } else if (drag?.mode === 'vertex') {
         const d = drag;
         s.liveEdit((doc) =>
@@ -469,7 +501,9 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       if (s.tool === 'select' && !drag) {
         const sel = findShape(s.doc.shapes, s.selectedId);
         const overHandle = !!sel && sel.type !== 'label' && hitVertex(sel, p, s.view.scale) >= 0;
-        host.style.cursor = overHandle ? 'pointer' : hitTest(s.doc.shapes, p, s.view.scale) ? 'move' : 'default';
+        const overRotate = !!sel && (sel.type === 'poly' || sel.type === 'rect' || sel.type === 'line' || sel.type === 'curve')
+          && Math.hypot(p.x - rotationHandlePoint(sel.pts, s.view.scale)[0], p.y - rotationHandlePoint(sel.pts, s.view.scale)[1]) * s.view.scale <= 12;
+        host.style.cursor = overRotate ? 'grab' : overHandle ? 'pointer' : hitTest(s.doc.shapes, p, s.view.scale) ? 'move' : 'default';
       } else if (s.tool === 'point' && !drag) {
         const edge = nearestPolygonEdge(s.doc.shapes, p);
         host.style.cursor = edge && edge.distance * s.view.scale <= POINT_HIT_PX ? 'copy' : 'crosshair';
@@ -533,7 +567,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           for (const id of finishedDrag.paths.keys()) s.finalizePolygonEdgeGaps(id);
         }
         drag = null;
-        if (wasPan) host.style.cursor = baseCursor();
+        if (wasPan || finishedDrag.mode === 'rotate') host.style.cursor = baseCursor();
         else if (finishedDrag.mode === 'erase-boundaries' || (finishedDrag.mode === 'erase-area' && finishedDrag.checkpointed)) s.commit();
       }
     };

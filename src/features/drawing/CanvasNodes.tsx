@@ -1,7 +1,7 @@
 import { Fragment, memo } from 'react';
 import type { ReactElement } from 'react';
 import { Circle, Image as KonvaImage, Layer, Line, Rect, Shape, Text } from 'react-konva';
-import { LABEL_FONT, HANDLE_PX, circleRadius, flatten, labelBox, rectPts } from '../../lib/geometry';
+import { LABEL_FONT, HANDLE_PX, circleRadius, flatten, labelBox, rectPts, rotationHandlePoint } from '../../lib/geometry';
 import { containRect } from '../../lib/image';
 import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH, elevationFill, SHEET_SIZE, SURFACES } from '../../types/map';
 import type { Draft, EdgeGap, LabelObject, MapObject, Point, SurfaceKind, XY } from '../../types/map';
@@ -225,6 +225,19 @@ function Handle({ p, scale, blue = false }: { p: Point; scale: number; blue?: bo
   );
 }
 
+function RotateHandle({ pts, scale }: { pts: Point[]; scale: number }) {
+  if (!pts.length) return null;
+  const [x, y] = rotationHandlePoint(pts, scale);
+  const topY = Math.min(...pts.map(([, py]) => py));
+  const unit = 1 / scale;
+  return <>
+    <Line points={[x, topY, x, y + 8 * unit]} stroke="#ffffff" strokeWidth={3 * unit} />
+    <Line points={[x, topY, x, y + 8 * unit]} stroke={SELECTION_COLOR} strokeWidth={1.2 * unit} />
+    <Circle x={x} y={y} radius={8 * unit} fill="#102126" stroke={SELECTION_COLOR} strokeWidth={1.4 * unit} />
+    <Text x={x - 7 * unit} y={y - 8 * unit} width={14 * unit} height={16 * unit} text="↻" fontSize={14 * unit} align="center" verticalAlign="middle" fill="#ffffff" listening={false} />
+  </>;
+}
+
 function SelectionOutline({ shape, scale, selectedEdgeIndex }: { shape: MapObject; scale: number; selectedEdgeIndex: number | null }) {
   if (shape.type === 'label') {
     const b = labelBox(shape);
@@ -246,6 +259,7 @@ function SelectionOutline({ shape, scale, selectedEdgeIndex }: { shape: MapObjec
         <Line points={flatten(shape.pts)} stroke="#ffffff" strokeWidth={3.5 / scale} lineCap="round" lineJoin="round" tension={shape.type === 'curve' ? 0.5 : 0} />
         <Line points={flatten(shape.pts)} stroke={selectedEdgeIndex === 0 ? '#ffb020' : SELECTION_COLOR} strokeWidth={1.6 / scale} lineCap="round" lineJoin="round" tension={shape.type === 'curve' ? 0.5 : 0} />
         {shape.pts.map((p, i) => <Handle key={i} p={p} scale={scale} />)}
+        <RotateHandle pts={shape.pts} scale={scale} />
       </>
     );
   }
@@ -258,6 +272,7 @@ function SelectionOutline({ shape, scale, selectedEdgeIndex }: { shape: MapObjec
         <Handle key={i} p={p} scale={scale} blue={shape.detached} />
       ))}
       {shape.detached && shape.holes?.flatMap((ring, ringIndex) => ring.map((p, i) => <Handle key={`hole-${ringIndex}-${i}`} p={p} scale={scale} blue />))}
+      <RotateHandle pts={shape.pts} scale={scale} />
     </>
   );
 }

@@ -24,6 +24,7 @@ npm run preview    # serve the production build
 | Curve boundary | Drag to sketch a smooth white curve; curves follow the pointer without grid snapping |
 | Edit | Drag a shape to move it; drag a handle to reshape or resize; use **Add point** on a polygon/rectangle edge to insert a draggable vertex (rectangles become polygons); double-click a polygon edge also inserts a point; `Shift`-click a point to remove it |
 | Box select | With **Select and edit** active, Ctrl+right-drag to select layers in a box; press `Delete` to remove them together |
+| Detach area | With **Select and edit** active, Ctrl+left-drag a box to split polygons; the affected outlines get editable blue vertex handles |
 | Eraser | Left-drag clears only the swept area; Ctrl+left-drag erases boundaries; choose **Polygon edges only** to open polygon edges |
 | Nudge / order | Arrow keys (`Shift` = 5 units); `]` forward, `[` back; `Ctrl+D` duplicate; `Del` delete |
 | Snapping | Toggle Snap and pick a grid size in the top bar; hold `Alt` to ignore snapping |

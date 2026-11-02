@@ -84,7 +84,8 @@ function paintErasures(c: CanvasRenderingContext2D, s: Exclude<MapObject, LabelO
   c.restore();
 }
 
-function paintCutouts(c: CanvasRenderingContext2D, cutouts: Point[][]) {
+function paintCutouts(c: CanvasRenderingContext2D, cutouts: Point[][] | undefined) {
+  if (!cutouts?.length) return;
   c.save();
   c.globalCompositeOperation = 'destination-out';
   c.strokeStyle = '#000000';
@@ -104,6 +105,18 @@ function paintCutouts(c: CanvasRenderingContext2D, cutouts: Point[][]) {
     c.moveTo(stroke[0][0], stroke[0][1]);
     for (let i = 1; i < stroke.length; i++) c.lineTo(stroke[i][0], stroke[i][1]);
     c.stroke();
+  }
+  c.restore();
+}
+
+function paintHoles(c: CanvasRenderingContext2D, holes: Point[][] | undefined) {
+  if (!holes?.length) return;
+  c.save();
+  c.globalCompositeOperation = 'destination-out';
+  c.fillStyle = '#000000';
+  for (const ring of holes) {
+    tracePath(c, ring);
+    c.fill();
   }
   c.restore();
 }
@@ -184,7 +197,7 @@ function paintShape(c: CanvasRenderingContext2D, s: MapObject) {
 export function paintSheet(c: CanvasRenderingContext2D, doc: MapDocument) {
   for (const s of doc.shapes) {
     if (s.hidden) continue;
-    if (!s.cutouts?.length) {
+    if (!s.cutouts?.length && !s.holes?.length) {
       paintShape(c, s);
       continue;
     }
@@ -195,6 +208,7 @@ export function paintSheet(c: CanvasRenderingContext2D, doc: MapDocument) {
     if (!isolatedCtx) continue;
     isolatedCtx.setTransform(c.getTransform());
     paintShape(isolatedCtx, s);
+    paintHoles(isolatedCtx, s.holes);
     paintCutouts(isolatedCtx, s.cutouts);
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);

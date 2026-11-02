@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import polygonClipping from 'polygon-clipping';
+import type { MultiPolygon, Pair, Ring } from 'polygon-clipping';
 import { fitTransform, clamp } from '../lib/geometry';
 import { createId } from '../lib/id';
 import { loadTheme } from '../lib/storage';
@@ -111,6 +113,7 @@ export interface EditorState {
   resetSheetForOfficialMap: (mapName: string) => void;
   addShape: (shape: MapObject) => void;
   addPolygonVertex: (id: string, edgeIndex: number, t: number, point: Point) => void;
+  detachPolygonsInBox: (a: Point, b: Point) => void;
   finishPolygon: () => void;
   removeSelected: () => void;
   reorderSelected: (dir: 1 | -1) => void;
@@ -141,6 +144,82 @@ export function mapShape(doc: MapDocument, id: string, fn: (s: MapObject) => Map
 }
 
 const snapshot = (doc: MapDocument): MapContent => ({ shapes: doc.shapes, background: doc.background });
+
+function closedRing(points: Point[]): Ring {
+  const ring = points.map(([x, y]) => [x, y] as Pair);
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first && last && (first[0] !== last[0] || first[1] !== last[1])) ring.push([first[0], first[1]]);
+  return ring;
+}
+
+function cleanRing(ring: Ring): Point[] {
+  const points = ring.slice();
+  if (points.length > 1 && points[0][0] === points[points.length - 1][0] && points[0][1] === points[points.length - 1][1]) points.pop();
+  const clean: Point[] = [];
+  for (const [x, y] of points) {
+    const previous = clean[clean.length - 1];
+    if (!previous || Math.hypot(x - previous[0], y - previous[1]) > 1e-6) clean.push([x, y]);
+  }
+  return clean.length >= 3 ? clean : [];
+}
+
+function pointSegmentDistance(point: Point, start: Point, end: Point): number {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared ? clamp(((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared, 0, 1) : 0;
+  return Math.hypot(point[0] - (start[0] + dx * t), point[1] - (start[1] + dy * t));
+}
+
+function clippedEdgeStyles(shape: Extract<MapObject, { type: 'poly' | 'rect' }>, ring: Point[]) {
+  const edgeOutlines: EdgeOutline[] = [];
+  const edgeWidths: number[] = [];
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const sourceEdge = shape.pts.findIndex((start, edgeIndex) => {
+      const end = shape.pts[(edgeIndex + 1) % shape.pts.length];
+      return pointSegmentDistance(a, start, end) < 1e-5 && pointSegmentDistance(b, start, end) < 1e-5;
+    });
+    edgeOutlines.push(sourceEdge >= 0 ? (shape.edgeOutlines?.[sourceEdge] ?? shape.outline) : shape.outline);
+    edgeWidths.push(sourceEdge >= 0 ? (shape.edgeWidths?.[sourceEdge] ?? shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH) : (shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH));
+  }
+  return { edgeOutlines, edgeWidths };
+}
+
+function geometryShapes(
+  shape: Extract<MapObject, { type: 'poly' | 'rect' }>,
+  geometry: MultiPolygon,
+  detached: boolean,
+  groupId: string | undefined,
+): MapObject[] {
+  const output: MapObject[] = [];
+  for (const polygon of geometry) {
+    const pts = cleanRing(polygon[0]);
+    if (!pts.length) continue;
+    const holes = polygon.slice(1).map(cleanRing).filter((ring) => ring.length >= 3);
+    const styles = clippedEdgeStyles(shape, pts);
+    const baseName = shape.name?.trim();
+    const name = detached ? (baseName ? `${baseName} detached`.slice(0, 60) : undefined) : baseName;
+    output.push({
+      ...shape,
+      id: detached || output.length > 0 ? createId() : shape.id,
+      type: 'poly',
+      pts,
+      holes: holes.length ? holes : undefined,
+      edgeOutlines: styles.edgeOutlines,
+      edgeWidths: styles.edgeWidths,
+      edgeGaps: undefined,
+      erasures: undefined,
+      detached: true,
+      name,
+      groupId: detached ? groupId : shape.groupId,
+      groupName: detached ? 'Detached area' : shape.groupName,
+    });
+  }
+  return output;
+}
 
 // Shapes are never mutated in place, so a snapshot only needs to keep references.
 function sameContent(a: MapContent, b: MapContent): boolean {
@@ -439,6 +518,44 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ selectedId: id, selectedEdgeIndex: null });
     get().showToast('Point added. Select the shape and drag its new vertex to edit it.');
   },
+  detachPolygonsInBox: (a, b) => {
+    const s = get();
+    const x0 = Math.min(a[0], b[0]);
+    const x1 = Math.max(a[0], b[0]);
+    const y0 = Math.min(a[1], b[1]);
+    const y1 = Math.max(a[1], b[1]);
+    if (x1 - x0 < 0.5 || y1 - y0 < 0.5) return;
+    const box: MultiPolygon = [[[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]];
+    const detachedGroupId = createId();
+    const nextShapes: MapObject[] = [];
+    const affectedIds: string[] = [];
+    let detachedPieces = 0;
+    for (const shape of s.doc.shapes) {
+      if (shape.hidden || (shape.type !== 'poly' && shape.type !== 'rect')) {
+        nextShapes.push(shape);
+        continue;
+      }
+      const sourceGeometry: MultiPolygon = [[closedRing(shape.pts), ...(shape.holes ?? []).map(closedRing)]];
+      const intersection = polygonClipping.intersection(sourceGeometry, box);
+      if (!intersection.length) {
+        nextShapes.push(shape);
+        continue;
+      }
+      const difference = polygonClipping.difference(sourceGeometry, box);
+      const sourceParts = geometryShapes(shape, difference, false, undefined);
+      const extractedParts = geometryShapes(shape, intersection, true, detachedGroupId);
+      nextShapes.push(...sourceParts, ...extractedParts);
+      affectedIds.push(...sourceParts.map((part) => part.id), ...extractedParts.map((part) => part.id));
+      detachedPieces += extractedParts.length;
+    }
+    if (!detachedPieces) {
+      s.showToast('The selection box did not cover any polygon area.');
+      return;
+    }
+    s.act((doc) => ({ ...doc, shapes: nextShapes }));
+    get().setMarqueeSelection(affectedIds);
+    get().showToast(`Detached ${detachedPieces} polygon piece${detachedPieces === 1 ? '' : 's'}. Blue points edit each new vertex.`);
+  },
   finishPolygon: () => {
     const { draft, kind } = get();
     set({ draft: null });
@@ -470,7 +587,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     if (!sel) return;
     const pts = sel.pts.map(([x, y]) => [Math.min(SHEET_SIZE, x + 6), Math.min(SHEET_SIZE, y + 6)] as Point);
     const offsetStrokes = (strokes: Point[][] | undefined) => strokes?.map((stroke) => stroke.map(([x, y]) => [Math.min(SHEET_SIZE, x + 6), Math.min(SHEET_SIZE, y + 6)] as Point));
-    s.addShape({ ...sel, id: createId(), pts, erasures: offsetStrokes(sel.erasures), cutouts: offsetStrokes(sel.cutouts) });
+    s.addShape({ ...sel, id: createId(), pts, holes: offsetStrokes(sel.holes), erasures: offsetStrokes(sel.erasures), cutouts: offsetStrokes(sel.cutouts) });
   },
   nudgeSelected: (dx, dy) => {
     const s = get();
@@ -481,6 +598,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     s.act((doc) => ({ ...doc, shapes: doc.shapes.map((shape) => ids.has(shape.id) ? {
       ...shape,
       pts: shape.pts.map(([x, y]) => [x + dx, y + dy] as Point),
+      ...(shape.holes ? { holes: shape.holes.map((ring) => ring.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
       ...(shape.erasures ? { erasures: shape.erasures.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
       ...(shape.cutouts ? { cutouts: shape.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
     } : shape) }));

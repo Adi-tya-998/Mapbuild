@@ -30,6 +30,8 @@ const edgeGaps = z.array(z.array(z.tuple([
 ])).max(500)).max(MAX_POINTS).optional();
 const erasures = z.array(z.array(point).min(1).max(MAX_POINTS)).max(500).optional();
 const cutouts = z.array(z.array(point).min(1).max(MAX_POINTS)).max(500).optional();
+const holes = z.array(z.array(point).min(3).max(MAX_POINTS)).max(500).optional();
+const detached = z.boolean().optional();
 const groupId = z.string().max(100).optional();
 
 const labelSchema = z
@@ -125,6 +127,8 @@ const filledSchema = z
     edgeGaps,
     erasures,
     cutouts,
+    holes,
+    detached,
   })
   .transform((s): MapObject => {
     const isRect = s.type === 'rect' && s.pts.length === 4 && s.rect === true;
@@ -145,6 +149,8 @@ const filledSchema = z
       edgeGaps: s.edgeGaps as EdgeGap[][] | undefined,
       erasures: s.erasures as Point[][] | undefined,
       cutouts: s.cutouts as Point[][] | undefined,
+      holes: s.holes as Point[][] | undefined,
+      detached: s.detached,
     };
   });
 

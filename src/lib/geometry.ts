@@ -89,7 +89,11 @@ export function hitTest(shapes: MapObject[], p: XY, scale = 1): MapObject | null
         if (segmentDistance(p, s.pts[j], s.pts[j + 1]).d * scale <= HIT_PX) return s;
       }
     } else {
-      if (pointInPolygon(p, s.pts) || (nearestEdge(s.pts, p)?.d ?? Infinity) * scale <= HIT_PX) return s;
+      const insideOuter = pointInPolygon(p, s.pts);
+      const insideHole = s.holes?.some((ring) => pointInPolygon(p, ring)) ?? false;
+      const nearOuter = (nearestEdge(s.pts, p)?.d ?? Infinity) * scale <= HIT_PX;
+      const nearHole = s.holes?.some((ring) => (nearestPathEdge(ring, p, true)?.d ?? Infinity) * scale <= HIT_PX) ?? false;
+      if ((insideOuter && !insideHole) || nearOuter || nearHole) return s;
     }
   }
   return null;
@@ -101,6 +105,14 @@ export function hitVertex(s: MapObject, p: XY, scale: number): number {
   }
   for (let i = 0; i < s.pts.length; i++) {
     if (Math.hypot(p.x - s.pts[i][0], p.y - s.pts[i][1]) * scale <= HIT_PX) return i;
+  }
+  if (s.type === 'poly' || s.type === 'rect') {
+    let index = s.pts.length;
+    for (const ring of s.holes ?? []) {
+      for (let i = 0; i < ring.length; i++, index++) {
+        if (Math.hypot(p.x - ring[i][0], p.y - ring[i][1]) * scale <= HIT_PX) return index;
+      }
+    }
   }
   return -1;
 }

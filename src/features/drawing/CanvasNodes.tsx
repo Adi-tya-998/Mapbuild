@@ -108,6 +108,13 @@ function Cutouts({ cutouts }: { cutouts: Point[][] | undefined }) {
   </>;
 }
 
+function ShapeHoles({ holes }: { holes: Point[][] | undefined }) {
+  if (!holes?.length) return null;
+  return <>
+    {holes.map((ring, i) => <Line key={i} points={flatten(ring)} closed fill="#000000" globalCompositeOperation="destination-out" perfectDrawEnabled={false} />)}
+  </>;
+}
+
 export const SheetShapes = memo(function SheetShapes({ shapes }: ShapesProps) {
   const layers: ReactElement[] = [];
   let regularShapes: ReactElement[] = [];
@@ -119,10 +126,11 @@ export const SheetShapes = memo(function SheetShapes({ shapes }: ShapesProps) {
   };
   for (const shape of shapes) {
     if (shape.hidden) continue;
-    if (shape.cutouts?.length) {
+    if (shape.cutouts?.length || shape.holes?.length) {
       flushRegularShapes();
       layers.push(<Layer key={shape.id} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>
         <ShapeContent s={shape} />
+        <ShapeHoles holes={shape.holes} />
         <Cutouts cutouts={shape.cutouts} />
       </Layer>);
     } else {
@@ -201,8 +209,9 @@ function Outlined({ pts, closed, scale, edgeGaps, edgeOutlines }: { pts: Point[]
   );
 }
 
-function Handle({ p, scale }: { p: Point; scale: number }) {
+function Handle({ p, scale, blue = false }: { p: Point; scale: number; blue?: boolean }) {
   const h = HANDLE_PX / scale;
+  if (blue) return <Circle x={p[0]} y={p[1]} radius={h / 2} fill="#00a9e8" stroke="#ffffff" strokeWidth={1.2 / scale} />;
   return (
     <Rect
       x={p[0] - h / 2}
@@ -244,9 +253,11 @@ function SelectionOutline({ shape, scale, selectedEdgeIndex }: { shape: MapObjec
     <>
       <Outlined pts={shape.pts} closed scale={scale} edgeGaps={shape.edgeGaps} edgeOutlines={shape.edgeOutlines} />
       {selectedEdgeIndex !== null && shape.edgeOutlines?.[selectedEdgeIndex] !== 'none' && shape.pts[selectedEdgeIndex] && shape.pts[(selectedEdgeIndex + 1) % shape.pts.length] && splitEdge(shape.pts[selectedEdgeIndex], shape.pts[(selectedEdgeIndex + 1) % shape.pts.length], shape.edgeGaps?.[selectedEdgeIndex]).map((segment, i) => <Line key={i} points={flatten(segment)} stroke="#ffb020" strokeWidth={2.5 / scale} lineCap="butt" />)}
+      {shape.holes?.map((ring, ringIndex) => <Outlined key={`hole-${ringIndex}`} pts={ring} closed scale={scale} />)}
       {shape.pts.map((p, i) => (
-        <Handle key={i} p={p} scale={scale} />
+        <Handle key={i} p={p} scale={scale} blue={shape.detached} />
       ))}
+      {shape.detached && shape.holes?.flatMap((ring, ringIndex) => ring.map((p, i) => <Handle key={`hole-${ringIndex}-${i}`} p={p} scale={scale} blue />))}
     </>
   );
 }

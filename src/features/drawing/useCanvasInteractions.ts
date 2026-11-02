@@ -58,10 +58,11 @@ function nearestBoundary(shape: MapObject, p: XY): { distance: number; point: Po
 
 type Drag =
   | { mode: 'pan'; x: number; y: number }
-  | { mode: 'move'; start: XY; members: Array<{ id: string; pts: Point[]; erasures?: Point[][]; cutouts?: Point[][] }> }
+  | { mode: 'move'; start: XY; members: Array<{ id: string; pts: Point[]; holes?: Point[][]; erasures?: Point[][]; cutouts?: Point[][] }> }
   | { mode: 'erase-boundaries'; onlyPolygon: boolean; paths: Map<string, { activePath: boolean; edgeIndex?: number; lastT?: number }> }
   | { mode: 'erase-area'; last: XY; active: Map<string, boolean>; checkpointed: boolean }
   | { mode: 'box-select'; start: XY; end: XY }
+  | { mode: 'detach-area'; start: XY; end: XY }
   | { mode: 'vertex'; id: string; index: number };
 
 function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
@@ -74,7 +75,10 @@ function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
   if (shape.type === 'line' || shape.type === 'curve') {
     return (nearestPathEdge(shape.pts, p, false)?.d ?? Infinity) <= radius + (shape.outlineWidth ?? 0.75) / 2;
   }
-  return pointInPolygon(p, shape.pts) || (nearestPathEdge(shape.pts, p, true)?.d ?? Infinity) <= radius;
+  const insideOuter = pointInPolygon(p, shape.pts);
+  const insideHole = shape.holes?.some((ring) => pointInPolygon(p, ring)) ?? false;
+  const nearHole = shape.holes?.some((ring) => (nearestPathEdge(ring, p, true)?.d ?? Infinity) <= radius) ?? false;
+  return (insideOuter && !insideHole) || (nearestPathEdge(shape.pts, p, true)?.d ?? Infinity) <= radius || nearHole;
 }
 
 function eraseAreaAlongPath(
@@ -139,7 +143,10 @@ function shapeIntersectsBox(shape: MapObject, a: XY, b: XY): boolean {
     return true;
   };
   if (shape.pts.some(inside)) return true;
-  if ((shape.type === 'poly' || shape.type === 'rect') && [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].some((point) => pointInPolygon({ x: point[0], y: point[1] }, shape.pts))) return true;
+  const corners: Point[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  if ((shape.type === 'poly' || shape.type === 'rect') && corners.some((point) =>
+    pointInPolygon({ x: point[0], y: point[1] }, shape.pts) && !(shape.holes?.some((ring) => pointInPolygon({ x: point[0], y: point[1] }, ring)) ?? false),
+  )) return true;
   const edgeCount = shape.type === 'poly' || shape.type === 'rect' ? shape.pts.length : shape.pts.length - 1;
   for (let i = 0; i < edgeCount; i++) {
     if (intersectsSegment(shape.pts[i], shape.pts[(i + 1) % shape.pts.length])) return true;
@@ -231,7 +238,13 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       const sp = snapPoint(p);
       s.setCursor(sp, p);
 
-      if (s.tool === 'eraser') {
+      if (s.tool === 'select' && e.ctrlKey) {
+        s.select(null);
+        s.setMarqueeSelection([]);
+        s.setSelectionBox({ a: [p.x, p.y], b: [p.x, p.y] });
+        drag = { mode: 'detach-area', start: p, end: p };
+        return;
+      } else if (s.tool === 'eraser') {
         if (!e.ctrlKey && s.eraserMode === 'area') {
           const areaDrag: Extract<Drag, { mode: 'erase-area' }> = { mode: 'erase-area', last: p, active: new Map(), checkpointed: false };
           eraseAreaAlongPath(s, p, p, areaDrag);
@@ -264,14 +277,35 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           }
         }
       } else if (s.tool === 'select') {
-        const sel = findShape(s.doc.shapes, s.selectedId);
-        if (sel && !sel.hidden && sel.type !== 'label') {
+        const selectedShapes = s.selectedId
+          ? [findShape(s.doc.shapes, s.selectedId)]
+          : s.marqueeSelection.map((id) => findShape(s.doc.shapes, id)).reverse();
+        for (const sel of selectedShapes) {
+          if (!sel || sel.hidden || sel.type === 'label') continue;
           const vi = hitVertex(sel, p, s.view.scale);
           if (vi >= 0) {
-            if (e.shiftKey && sel.type !== 'rect' && sel.pts.length > 3) {
-              s.act((doc) => mapShape(doc, sel.id, (o) => ({ ...o, pts: o.pts.filter((_, i) => i !== vi) })));
-              return;
+            if (e.shiftKey) {
+              if (sel.type !== 'rect' && vi < sel.pts.length && sel.pts.length > 3) {
+                s.act((doc) => mapShape(doc, sel.id, (o) => ({ ...o, pts: o.pts.filter((_, i) => i !== vi) })));
+                return;
+              }
+              if (vi >= sel.pts.length && (sel.type === 'poly' || sel.type === 'rect')) {
+                let holeIndex = vi - sel.pts.length;
+                const ringIndex = (sel.holes ?? []).findIndex((ring) => {
+                  if (holeIndex < ring.length) return true;
+                  holeIndex -= ring.length;
+                  return false;
+                });
+                if (ringIndex >= 0 && (sel.holes?.[ringIndex]?.length ?? 0) > 3) {
+                  const indexInRing = holeIndex;
+                  s.act((doc) => mapShape(doc, sel.id, (o) => o.type === 'poly' || o.type === 'rect'
+                    ? { ...o, holes: o.holes?.map((ring, i) => i === ringIndex ? ring.filter((_, vertexIndex) => vertexIndex !== indexInRing) : ring) }
+                    : o));
+                  return;
+                }
+              }
             }
+            s.select(sel.id);
             s.checkpoint();
             drag = { mode: 'vertex', id: sel.id, index: vi };
             return;
@@ -300,6 +334,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           drag = { mode: 'move', start: p, members: members.map((shape) => ({
             id: shape.id,
             pts: shape.pts.map((q) => [q[0], q[1]] as Point),
+            holes: shape.holes?.map((ring) => ring.map(([x, y]) => [x, y] as Point)),
             erasures: shape.erasures?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
             cutouts: shape.cutouts?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
           })) };
@@ -356,7 +391,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       const sp = snapPoint(p);
       s.setCursor(sp, p);
 
-      if (drag?.mode === 'box-select') {
+      if (drag?.mode === 'box-select' || drag?.mode === 'detach-area') {
         drag = { ...drag, end: p };
         s.setSelectionBox({ a: [drag.start.x, drag.start.y], b: [p.x, p.y] });
       } else if (drag?.mode === 'erase-area') {
@@ -381,6 +416,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           return original ? {
             ...shape,
             pts: original.pts.map(([x, y]) => [x + dx, y + dy] as Point),
+            ...(original.holes ? { holes: original.holes.map((ring) => ring.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
             ...(original.erasures ? { erasures: original.erasures.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
             ...(original.cutouts ? { cutouts: original.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
           } : shape;
@@ -389,8 +425,21 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const d = drag;
         s.liveEdit((doc) =>
           mapShape(doc, d.id, (sh) => {
-            if (sh.type === 'rect') return { ...sh, pts: moveRectCorner(sh.pts, d.index, sp) };
-            return { ...sh, pts: sh.pts.map((q, i) => (i === d.index ? ([sp.x, sp.y] as Point) : q)) };
+            if (sh.type === 'rect' && d.index < sh.pts.length) return { ...sh, pts: moveRectCorner(sh.pts, d.index, sp) };
+            if (d.index < sh.pts.length) return { ...sh, pts: sh.pts.map((q, i) => (i === d.index ? ([sp.x, sp.y] as Point) : q)) };
+            if (sh.type === 'poly' || sh.type === 'rect') {
+              let holeIndex = d.index - sh.pts.length;
+              const ringIndex = (sh.holes ?? []).findIndex((ring) => {
+                if (holeIndex < ring.length) return true;
+                holeIndex -= ring.length;
+                return false;
+              });
+              if (ringIndex >= 0) {
+                const indexInRing = holeIndex;
+                return { ...sh, holes: sh.holes?.map((ring, i) => i === ringIndex ? ring.map((q, vertexIndex) => vertexIndex === indexInRing ? [sp.x, sp.y] as Point : q) : ring) };
+              }
+            }
+            return sh;
           }),
         );
       } else if (s.draft?.type === 'rect') {
@@ -461,6 +510,15 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       if (drag) {
         const finishedDrag = drag;
         const wasPan = finishedDrag.mode === 'pan';
+        if (finishedDrag.mode === 'detach-area') {
+          const { start, end } = finishedDrag;
+          s.setSelectionBox(null);
+          drag = null;
+          if (Math.hypot(end.x - start.x, end.y - start.y) >= 0.5) {
+            s.detachPolygonsInBox([start.x, start.y], [end.x, end.y]);
+          }
+          return;
+        }
         if (finishedDrag.mode === 'box-select') {
           const { start, end } = finishedDrag;
           const ids = Math.hypot(end.x - start.x, end.y - start.y) < 0.5

@@ -60,6 +60,10 @@ interface ObjectBase {
   erasures?: Point[][];
   /** Transparent brush strokes clipped to this object, removing only the painted area. */
   cutouts?: Point[][];
+  /** Interior rings cut out by polygon clipping. */
+  holes?: Point[][];
+  /** Show blue editable vertex handles after a selection detachment. */
+  detached?: boolean;
   /** True outline openings, stored as normalized intervals for each closed-shape edge. */
   edgeGaps?: EdgeGap[][];
   /** Relative height used to shade filled surfaces; lower Z values render darker. */

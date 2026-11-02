@@ -562,9 +562,9 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const r = host.getBoundingClientRect();
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-      st().zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), e.clientX - r.left, e.clientY - r.top);
+      const { viewport } = st();
+      st().zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), viewport.w / 2, viewport.h / 2);
     };
 
     host.addEventListener('pointerdown', onPointerDown);

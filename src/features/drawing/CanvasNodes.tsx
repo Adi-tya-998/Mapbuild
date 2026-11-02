@@ -6,6 +6,7 @@ import { containRect } from '../../lib/image';
 import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH, elevationFill, SHEET_SIZE, SURFACES } from '../../types/map';
 import type { Draft, EdgeGap, LabelObject, MapObject, Point, SurfaceKind, XY } from '../../types/map';
 import type { Background } from '../../types/project';
+import type { HoverTarget } from '../../stores/editorStore';
 
 export const SELECTION_COLOR = '#0aa6b7';
 
@@ -277,6 +278,56 @@ function SelectionOutline({ shape, scale, selectedEdgeIndex }: { shape: MapObjec
   );
 }
 
+function HoverHighlight({ shape, target, scale }: { shape: MapObject; target: HoverTarget; scale: number }) {
+  const strokeWidth = 3 / scale;
+  if (target.part === 'vertex') {
+    const ring = target.ring ?? 0;
+    const point = ring === 0 ? shape.pts[target.index ?? -1] : (shape.type === 'poly' || shape.type === 'rect' ? shape.holes?.[ring - 1]?.[target.index ?? -1] : undefined);
+    if (!point) return null;
+    return <Circle x={point[0]} y={point[1]} radius={7 / scale} fill="#ffb020" stroke="#ffffff" strokeWidth={1.5 / scale} />;
+  }
+  if (target.part === 'rotate') {
+    const [x, y] = rotationHandlePoint(shape.pts, scale);
+    return <Circle x={x} y={y} radius={10 / scale} stroke="#ffb020" strokeWidth={2 / scale} />;
+  }
+  if (target.part === 'body') {
+    if (shape.type === 'label') {
+      const box = labelBox(shape);
+      return <Rect x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} fill="rgba(10,166,183,.16)" stroke={SELECTION_COLOR} strokeWidth={strokeWidth} />;
+    }
+    if (shape.type === 'circle') {
+      return <Circle x={shape.pts[0][0]} y={shape.pts[0][1]} radius={circleRadius(shape.pts)} fill="rgba(10,166,183,.16)" stroke={SELECTION_COLOR} strokeWidth={strokeWidth} />;
+    }
+    if (shape.type === 'poly' || shape.type === 'rect') {
+      return <Line points={flatten(shape.pts)} closed stroke={SELECTION_COLOR} strokeWidth={strokeWidth} lineJoin="round" />;
+    }
+  }
+  if (shape.type === 'circle') {
+    return <>
+      <Circle x={shape.pts[0][0]} y={shape.pts[0][1]} radius={circleRadius(shape.pts)} stroke="#ffffff" strokeWidth={5 / scale} />
+      <Circle x={shape.pts[0][0]} y={shape.pts[0][1]} radius={circleRadius(shape.pts)} stroke="#ffb020" strokeWidth={strokeWidth} />
+    </>;
+  }
+  if (shape.type === 'line' || shape.type === 'curve') {
+    return <>
+      <Line points={flatten(shape.pts)} stroke="#ffffff" strokeWidth={5 / scale} lineCap="round" lineJoin="round" tension={shape.type === 'curve' ? 0.5 : 0} />
+      <Line points={flatten(shape.pts)} stroke="#ffb020" strokeWidth={strokeWidth} lineCap="round" lineJoin="round" tension={shape.type === 'curve' ? 0.5 : 0} />
+    </>;
+  }
+  if (shape.type === 'poly' || shape.type === 'rect') {
+    const ring = target.ring ?? 0;
+    const points = ring === 0 ? shape.pts : shape.holes?.[ring - 1];
+    const index = target.index ?? -1;
+    if (!points?.length || index < 0 || index >= points.length) return null;
+    const segment: Point[] = [points[index], points[(index + 1) % points.length]];
+    return <>
+      <Line points={flatten(segment)} stroke="#ffffff" strokeWidth={5 / scale} lineCap="round" />
+      <Line points={flatten(segment)} stroke="#ffb020" strokeWidth={strokeWidth} lineCap="round" />
+    </>;
+  }
+  return null;
+}
+
 function DraftPreview({
   draft,
   cursor,
@@ -337,6 +388,8 @@ function DraftPreview({
 
 interface OverlayProps {
   selected: MapObject | null;
+  hoverShape: MapObject | null;
+  hoverTarget: HoverTarget | null;
   multiSelected?: MapObject[];
   selectionBox?: { a: Point; b: Point } | null;
   draft: Draft | null;
@@ -349,13 +402,14 @@ interface OverlayProps {
   selectedEdgeIndex: number | null;
 }
 
-export function EditorOverlay({ selected, multiSelected = [], selectionBox, draft, cursor, rawCursor, crosshair, eraser, kind, scale, selectedEdgeIndex }: OverlayProps) {
+export function EditorOverlay({ selected, hoverShape, hoverTarget, multiSelected = [], selectionBox, draft, cursor, rawCursor, crosshair, eraser, kind, scale, selectedEdgeIndex }: OverlayProps) {
   const a = 6 / scale;
   const eraserPoint = rawCursor ?? cursor;
   return (
     <>
       {selected && !selected.hidden && <SelectionOutline shape={selected} scale={scale} selectedEdgeIndex={selectedEdgeIndex} />}
       {multiSelected.map((shape) => <SelectionOutline key={shape.id} shape={shape} scale={scale} selectedEdgeIndex={null} />)}
+      {hoverTarget && hoverShape && !hoverShape.hidden && <HoverHighlight shape={hoverShape} target={hoverTarget} scale={scale} />}
       {selectionBox && <Rect
         x={Math.min(selectionBox.a[0], selectionBox.b[0])}
         y={Math.min(selectionBox.a[1], selectionBox.b[1])}

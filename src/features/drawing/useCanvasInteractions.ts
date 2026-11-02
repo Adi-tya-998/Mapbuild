@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import { circleRadius, hitTest, hitVertex, labelBox, moveRectCorner, nearestEdge, nearestPathEdge, pointInPolygon, pointsCenter, rectPts, rotatePoints, rotationHandlePoint, snapValue, HIT_PX } from '../../lib/geometry';
 import { createId } from '../../lib/id';
 import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
+import type { HoverTarget } from '../../stores/editorStore';
 import { ERASER_WIDTH } from '../../types/map';
 import type { MapObject, Point, XY } from '../../types/map';
 
@@ -78,6 +79,48 @@ function rotateShape(shape: MapObject, center: Point, angle: number): MapObject 
     ...(shape.cutouts ? { cutouts: rotateStrokes(shape.cutouts) } : {}),
   };
   return shape.type === 'rect' ? { ...shape, ...geometry, type: 'poly' } : { ...shape, ...geometry };
+}
+
+function vertexAddress(shape: MapObject, vertexIndex: number): Pick<HoverTarget, 'index' | 'ring'> {
+  if (vertexIndex < shape.pts.length) return { index: vertexIndex, ring: 0 };
+  let index = vertexIndex - shape.pts.length;
+  for (let ring = 0; ring < (shape.type === 'poly' || shape.type === 'rect' ? shape.holes?.length ?? 0 : 0); ring++) {
+    const points = shape.type === 'poly' || shape.type === 'rect' ? shape.holes?.[ring] ?? [] : [];
+    if (index < points.length) return { index, ring: ring + 1 };
+    index -= points.length;
+  }
+  return { index: vertexIndex, ring: 0 };
+}
+
+function hoverTargetAt(shapes: MapObject[], p: XY, scale: number, selectedId: string | null): HoverTarget | null {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const shape = shapes[i];
+    if (shape.hidden) continue;
+    if (shape.id === selectedId && (shape.type === 'poly' || shape.type === 'rect' || shape.type === 'line' || shape.type === 'curve')) {
+      const [x, y] = rotationHandlePoint(shape.pts, scale);
+      if (Math.hypot(p.x - x, p.y - y) * scale <= 12) return { shapeId: shape.id, part: 'rotate' };
+    }
+    if (shape.type !== 'label') {
+      const vertex = hitVertex(shape, p, scale);
+      if (vertex >= 0) return { shapeId: shape.id, part: 'vertex', ...vertexAddress(shape, vertex) };
+    }
+    if (shape.type === 'circle') {
+      if (Math.abs(Math.hypot(p.x - shape.pts[0][0], p.y - shape.pts[0][1]) - circleRadius(shape.pts)) * scale <= HIT_PX) {
+        return { shapeId: shape.id, part: 'edge', index: 0, ring: 0 };
+      }
+    } else if (shape.type === 'line' || shape.type === 'curve') {
+      const edge = nearestPathEdge(shape.pts, p, false);
+      if (edge && edge.d * scale <= HIT_PX) return { shapeId: shape.id, part: 'edge', index: edge.i, ring: 0 };
+    } else if (shape.type === 'poly' || shape.type === 'rect') {
+      const rings = [shape.pts, ...(shape.holes ?? [])];
+      for (let ring = 0; ring < rings.length; ring++) {
+        const edge = nearestPathEdge(rings[ring], p, true);
+        if (edge && edge.d * scale <= HIT_PX) return { shapeId: shape.id, part: 'edge', index: edge.i, ring };
+      }
+    }
+    if (hitTest([shape], p, scale)) return { shapeId: shape.id, part: 'body' };
+  }
+  return null;
 }
 
 function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
@@ -249,6 +292,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       host.setPointerCapture(e.pointerId);
       const s = st();
       s.setAlt(e.altKey);
+      if (s.tool === 'select') s.setHoverTarget(null);
       const p = toUnits(e);
       const sp = snapPoint(p);
       s.setCursor(sp, p);
@@ -499,14 +543,15 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       }
 
       if (s.tool === 'select' && !drag) {
-        const sel = findShape(s.doc.shapes, s.selectedId);
-        const overHandle = !!sel && sel.type !== 'label' && hitVertex(sel, p, s.view.scale) >= 0;
-        const overRotate = !!sel && (sel.type === 'poly' || sel.type === 'rect' || sel.type === 'line' || sel.type === 'curve')
-          && Math.hypot(p.x - rotationHandlePoint(sel.pts, s.view.scale)[0], p.y - rotationHandlePoint(sel.pts, s.view.scale)[1]) * s.view.scale <= 12;
-        host.style.cursor = overRotate ? 'grab' : overHandle ? 'pointer' : hitTest(s.doc.shapes, p, s.view.scale) ? 'move' : 'default';
+        const target = hoverTargetAt(s.doc.shapes, p, s.view.scale, s.selectedId);
+        s.setHoverTarget(target);
+        host.style.cursor = target?.part === 'rotate' ? 'grab' : target?.part === 'vertex' ? 'pointer' : target ? 'move' : 'default';
       } else if (s.tool === 'point' && !drag) {
+        s.setHoverTarget(null);
         const edge = nearestPolygonEdge(s.doc.shapes, p);
         host.style.cursor = edge && edge.distance * s.view.scale <= POINT_HIT_PX ? 'copy' : 'crosshair';
+      } else if (s.tool !== 'select') {
+        s.setHoverTarget(null);
       }
     };
 
@@ -573,6 +618,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
     };
 
     const onPointerLeave = () => {
+      st().setHoverTarget(null);
       if (!drag) st().setCursor(null, null);
     };
 

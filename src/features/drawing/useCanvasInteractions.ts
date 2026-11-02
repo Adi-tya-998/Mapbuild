@@ -564,7 +564,11 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
       e.preventDefault();
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
       const { viewport } = st();
-      st().zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), viewport.w / 2, viewport.h / 2);
+      const centerX = viewport.w / 2;
+      const centerY = viewport.h / 2;
+      const zoomX = e.ctrlKey ? e.clientX - host.getBoundingClientRect().left : centerX;
+      const zoomY = e.ctrlKey ? e.clientY - host.getBoundingClientRect().top : centerY;
+      st().zoomAt(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), zoomX, zoomY);
     };
 
     host.addEventListener('pointerdown', onPointerDown);

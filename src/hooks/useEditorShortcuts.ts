@@ -35,6 +35,7 @@ export function useEditorShortcuts(): void {
       }
       if (key === 'Escape') {
         if (s.draft) s.setDraft(null);
+        else if (s.marqueeSelection.length) s.setMarqueeSelection([]);
         else if (s.selectedId !== null) s.select(null);
         return;
       }
@@ -49,7 +50,7 @@ export function useEditorShortcuts(): void {
         return;
       }
       if (key === 'Delete' || key === 'Backspace') {
-        if (s.selectedId !== null) {
+        if (s.selectedId !== null || s.marqueeSelection.length) {
           e.preventDefault();
           s.removeSelected();
         }

@@ -38,11 +38,13 @@ export function MapCanvas() {
   const [fontTick, setFontTick] = useState(0);
   const [quickMenu, setQuickMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const { doc, selectedId, selectedEdgeIndex, tool, kind, grid, gridSize, view, viewport, draft, cursor, rawCursor } = useEditorStore(
+  const { doc, selectedId, selectedEdgeIndex, marqueeSelection, selectionBox, tool, kind, grid, gridSize, view, viewport, draft, cursor, rawCursor } = useEditorStore(
     useShallow((s) => ({
       doc: s.doc,
       selectedId: s.selectedId,
       selectedEdgeIndex: s.selectedEdgeIndex,
+      marqueeSelection: s.marqueeSelection,
+      selectionBox: s.selectionBox,
       tool: s.tool,
       kind: s.kind,
       grid: s.grid,
@@ -123,7 +125,13 @@ export function MapCanvas() {
       onDragOver={onDragOver}
       onDragLeave={() => setDropping(false)}
       onDrop={onDrop}
-      onContextMenu={openQuickMenu}
+      onContextMenu={(event) => {
+        if (event.ctrlKey && tool === 'eraser') {
+          event.preventDefault();
+          return;
+        }
+        openQuickMenu(event);
+      }}
       aria-label="Map sheet, 360 by 360 units"
     >
       {viewport.w > 0 && (
@@ -149,6 +157,8 @@ export function MapCanvas() {
           <Layer listening={false}>
             <EditorOverlay
               selected={selected}
+              multiSelected={doc.shapes.filter((shape) => marqueeSelection.includes(shape.id) && shape.id !== selectedId)}
+              selectionBox={selectionBox}
               draft={draft}
               cursor={cursor}
               rawCursor={rawCursor}

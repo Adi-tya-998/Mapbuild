@@ -62,10 +62,10 @@ export const TOOLS: ToolDef[] = [
   },
   {
     id: 'eraser',
-    label: 'Boundary eraser',
+    label: 'Eraser',
     key: 'E',
     icon: Eraser,
-    hint: 'Open polygon edges like a doorway; erase only the brushed part of a drawn boundary.',
+    hint: 'Drag to erase whole shapes. Hold Ctrl and left-drag to erase boundaries; Ctrl+right-drag selects a box of layers for Delete. Use the mode menu for polygon-edge openings.',
   },
   {
     id: 'label',

@@ -285,6 +285,8 @@ function DraftPreview({
 
 interface OverlayProps {
   selected: MapObject | null;
+  multiSelected?: MapObject[];
+  selectionBox?: { a: Point; b: Point } | null;
   draft: Draft | null;
   cursor: XY | null;
   rawCursor: XY | null;
@@ -295,12 +297,23 @@ interface OverlayProps {
   selectedEdgeIndex: number | null;
 }
 
-export function EditorOverlay({ selected, draft, cursor, rawCursor, crosshair, eraser, kind, scale, selectedEdgeIndex }: OverlayProps) {
+export function EditorOverlay({ selected, multiSelected = [], selectionBox, draft, cursor, rawCursor, crosshair, eraser, kind, scale, selectedEdgeIndex }: OverlayProps) {
   const a = 6 / scale;
   const eraserPoint = rawCursor ?? cursor;
   return (
     <>
       {selected && !selected.hidden && <SelectionOutline shape={selected} scale={scale} selectedEdgeIndex={selectedEdgeIndex} />}
+      {multiSelected.map((shape) => <SelectionOutline key={shape.id} shape={shape} scale={scale} selectedEdgeIndex={null} />)}
+      {selectionBox && <Rect
+        x={Math.min(selectionBox.a[0], selectionBox.b[0])}
+        y={Math.min(selectionBox.a[1], selectionBox.b[1])}
+        width={Math.abs(selectionBox.b[0] - selectionBox.a[0])}
+        height={Math.abs(selectionBox.b[1] - selectionBox.a[1])}
+        fill="rgba(10,166,183,.13)"
+        stroke={SELECTION_COLOR}
+        strokeWidth={1 / scale}
+        dash={[4 / scale, 3 / scale]}
+      />}
       {draft && <DraftPreview draft={draft} cursor={cursor} rawCursor={rawCursor} kind={kind} scale={scale} />}
       {eraser && eraserPoint && <Circle x={eraserPoint.x} y={eraserPoint.y} radius={ERASER_WIDTH / 2} fill="rgba(23,112,122,.14)" stroke={SELECTION_COLOR} strokeWidth={1 / scale} />}
       {crosshair && cursor && (

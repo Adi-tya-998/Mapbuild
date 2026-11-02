@@ -4,6 +4,8 @@ import { useEditorStore } from '../stores/editorStore';
 export function ToolRail() {
   const tool = useEditorStore((s) => s.tool);
   const setTool = useEditorStore((s) => s.setTool);
+  const eraserMode = useEditorStore((s) => s.eraserMode);
+  const setEraserMode = useEditorStore((s) => s.setEraserMode);
 
   return (
     <nav className="tools" aria-label="Tools">
@@ -21,6 +23,18 @@ export function ToolRail() {
           <kbd>{key}</kbd>
         </button>
       ))}
+      {tool === 'eraser' && (
+        <select
+          className="eraser-mode-select form-select form-select-sm"
+          aria-label="Eraser mode"
+          title="Choose whether the eraser removes shapes or opens polygon edges"
+          value={eraserMode}
+          onChange={(event) => setEraserMode(event.target.value as 'objects' | 'edges')}
+        >
+          <option value="objects">Erase shapes</option>
+          <option value="edges">Polygon edges only</option>
+        </select>
+      )}
     </nav>
   );
 }

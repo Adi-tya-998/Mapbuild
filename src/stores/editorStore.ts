@@ -37,6 +37,9 @@ export interface EditorState {
   // --- transient UI state (never saved) ---
   selectedId: string | null;
   selectedEdgeIndex: number | null;
+  marqueeSelection: string[];
+  selectionBox: { a: Point; b: Point } | null;
+  eraserMode: 'objects' | 'edges';
   groupingSelection: string[];
   tool: Tool;
   kind: SurfaceKind;
@@ -75,6 +78,9 @@ export interface EditorState {
   setCursor: (snapped: XY | null, raw: XY | null) => void;
   setDraft: (d: Draft | null) => void;
   select: (id: string | null) => void;
+  setMarqueeSelection: (ids: string[]) => void;
+  setSelectionBox: (box: { a: Point; b: Point } | null) => void;
+  setEraserMode: (mode: 'objects' | 'edges') => void;
   selectEdge: (index: number | null) => void;
   toggleGroupingSelection: (id: string) => void;
   groupSelectedLayers: () => void;
@@ -149,6 +155,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   selectedId: null,
   selectedEdgeIndex: null,
+  marqueeSelection: [],
+  selectionBox: null,
+  eraserMode: 'objects',
   groupingSelection: [],
   tool: 'select',
   kind: 'floor',
@@ -175,7 +184,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   clearToast: (id) => set((s) => (s.toast?.id === id ? { toast: null } : {})),
   setTheme: (theme) => set({ theme }),
 
-  setTool: (tool) => set({ tool, draft: null }),
+  setTool: (tool) => set({ tool, draft: null, selectionBox: null, marqueeSelection: [] }),
   setKind: (kind) => {
     const s = get();
     const sel = findShape(s.doc.shapes, s.selectedId);
@@ -195,7 +204,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   },
   setCursor: (cursor, rawCursor) => set({ cursor, rawCursor }),
   setDraft: (draft) => set({ draft }),
-  select: (selectedId) => set({ selectedId, selectedEdgeIndex: null }),
+  select: (selectedId) => set({ selectedId, selectedEdgeIndex: null, marqueeSelection: [] }),
+  setMarqueeSelection: (marqueeSelection) => set({ marqueeSelection, selectedId: null, selectedEdgeIndex: null }),
+  setSelectionBox: (selectionBox) => set({ selectionBox }),
+  setEraserMode: (eraserMode) => set({ eraserMode }),
   selectEdge: (selectedEdgeIndex) => set({ selectedEdgeIndex }),
   toggleGroupingSelection: (id) => set((s) => ({ groupingSelection: s.groupingSelection.includes(id) ? s.groupingSelection.filter((item) => item !== id) : [...s.groupingSelection, id] })),
   groupSelectedLayers: () => {
@@ -434,10 +446,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     }
   },
   removeSelected: () => {
-    const id = get().selectedId;
-    if (id === null) return;
-    get().act((doc) => ({ ...doc, shapes: doc.shapes.filter((s) => s.id !== id) }));
-    set({ selectedId: null, selectedEdgeIndex: null });
+    const { selectedId, marqueeSelection } = get();
+    const ids = new Set([...marqueeSelection, ...(selectedId ? [selectedId] : [])]);
+    if (ids.size === 0) return;
+    get().act((doc) => ({ ...doc, shapes: doc.shapes.filter((shape) => !ids.has(shape.id)) }));
+    set({ selectedId: null, selectedEdgeIndex: null, marqueeSelection: [], selectionBox: null });
   },
   reorderSelected: (dir) => {
     const s = get();

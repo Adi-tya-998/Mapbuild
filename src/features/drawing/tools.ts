@@ -16,7 +16,7 @@ export const TOOLS: ToolDef[] = [
     label: 'Select and edit',
     key: 'V',
     icon: MousePointer2,
-    hint: 'Click a shape to select it. Drag to move, drag a handle to reshape. Double-click an edge to add a point, Shift-click a point to remove it. Arrow keys nudge. Scroll to zoom; drag with Space or the middle mouse button to pan.',
+    hint: 'Click a shape to select it. Drag to move, drag a handle to reshape. Ctrl+right-drag to box-select layers, then press Delete. Double-click an edge to add a point, Shift-click a point to remove it. Arrow keys nudge. Scroll to zoom; drag with Space or the middle mouse button to pan.',
   },
   {
     id: 'poly',
@@ -65,7 +65,7 @@ export const TOOLS: ToolDef[] = [
     label: 'Eraser',
     key: 'E',
     icon: Eraser,
-    hint: 'Left-drag to erase only the swept area. Hold Ctrl and left-drag to erase boundaries; Ctrl+right-drag selects a box of layers for Delete. Use the mode menu for polygon-edge openings.',
+    hint: 'Left-drag to erase only the swept area. Hold Ctrl and left-drag to erase boundaries. Use the mode menu for polygon-edge openings.',
   },
   {
     id: 'label',

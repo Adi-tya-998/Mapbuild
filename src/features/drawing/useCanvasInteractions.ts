@@ -213,7 +213,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         host.style.cursor = 'grabbing';
         return;
       }
-      if (e.button === 2 && e.ctrlKey && st().tool === 'eraser') {
+      if (e.button === 2 && e.ctrlKey && st().tool === 'select') {
         e.preventDefault();
         host.setPointerCapture(e.pointerId);
         const p = toUnits(e);

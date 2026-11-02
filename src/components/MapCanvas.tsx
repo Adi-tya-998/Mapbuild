@@ -126,7 +126,7 @@ export function MapCanvas() {
       onDragLeave={() => setDropping(false)}
       onDrop={onDrop}
       onContextMenu={(event) => {
-        if (event.ctrlKey && tool === 'eraser') {
+        if (event.ctrlKey && tool === 'select') {
           event.preventDefault();
           return;
         }

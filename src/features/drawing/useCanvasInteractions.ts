@@ -3,7 +3,7 @@ import type { RefObject } from 'react';
 import { circleRadius, hitTest, hitVertex, labelBox, moveRectCorner, nearestEdge, nearestPathEdge, pointInPolygon, pointsCenter, rectPts, rotatePoints, rotationHandlePoint, snapValue, HIT_PX } from '../../lib/geometry';
 import { createId } from '../../lib/id';
 import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
-import { ERASER_WIDTH } from '../../types/map';
+import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH } from '../../types/map';
 import type { MapObject, Point, XY } from '../../types/map';
 
 const ERASER_HIT_PX = 8;
@@ -64,7 +64,31 @@ type Drag =
   | { mode: 'box-select'; start: XY; end: XY }
   | { mode: 'detach-area'; start: XY; end: XY }
   | { mode: 'rotate'; id: string; center: Point; startAngle: number; original: MapObject }
-  | { mode: 'vertex'; id: string; index: number };
+  | { mode: 'vertex'; id: string; index: number; free: boolean };
+
+function circleAsPolygon(shape: Extract<MapObject, { type: 'circle' }>): Extract<MapObject, { type: 'poly' }> {
+  const [cx, cy] = shape.pts[0];
+  const [hx, hy] = shape.pts[1];
+  const radius = circleRadius(shape.pts);
+  const sides = 48;
+  const angle = Math.atan2(hy - cy, hx - cx) - (Math.PI * 2) / sides;
+  const pts = Array.from({ length: sides }, (_, i): Point => {
+    const at = angle + (Math.PI * 2 * i) / sides;
+    return [cx + Math.cos(at) * radius, cy + Math.sin(at) * radius];
+  });
+  const outline = shape.edgeOutlines?.[0] ?? shape.outline ?? 'none';
+  const width = shape.edgeWidths?.[0] ?? shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
+  return {
+    ...shape,
+    type: 'poly',
+    pts,
+    outline,
+    outlineWidth: width,
+    edgeOutlines: Array.from({ length: sides }, () => outline),
+    edgeWidths: Array.from({ length: sides }, () => width),
+    edgeGaps: undefined,
+  };
+}
 
 function rotateShape(shape: MapObject, center: Point, angle: number): MapObject {
   if (shape.type === 'label' || shape.type === 'circle') return shape;
@@ -333,7 +357,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
             }
             s.select(sel.id);
             s.checkpoint();
-            drag = { mode: 'vertex', id: sel.id, index: vi };
+            drag = { mode: 'vertex', id: sel.id, index: vi, free: e.altKey };
             return;
           }
         }
@@ -457,7 +481,14 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const d = drag;
         s.liveEdit((doc) =>
           mapShape(doc, d.id, (sh) => {
-            if (sh.type === 'rect' && d.index < sh.pts.length) return { ...sh, pts: moveRectCorner(sh.pts, d.index, sp) };
+            if (sh.type === 'circle' && d.free && d.index === 1) {
+              const polygon = circleAsPolygon(sh);
+              return { ...polygon, pts: polygon.pts.map((q, i) => i === d.index ? [sp.x, sp.y] as Point : q) };
+            }
+            if (sh.type === 'rect' && d.index < sh.pts.length) {
+              if (d.free) return { ...sh, type: 'poly', pts: sh.pts.map((q, i) => i === d.index ? [sp.x, sp.y] as Point : q) };
+              return { ...sh, pts: moveRectCorner(sh.pts, d.index, sp) };
+            }
             if (d.index < sh.pts.length) return { ...sh, pts: sh.pts.map((q, i) => (i === d.index ? ([sp.x, sp.y] as Point) : q)) };
             if (sh.type === 'poly' || sh.type === 'rect') {
               let holeIndex = d.index - sh.pts.length;
@@ -568,7 +599,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         }
         drag = null;
         if (wasPan || finishedDrag.mode === 'rotate') host.style.cursor = baseCursor();
-        else if (finishedDrag.mode === 'erase-boundaries' || (finishedDrag.mode === 'erase-area' && finishedDrag.checkpointed)) s.commit();
+        if (finishedDrag.mode === 'move' || finishedDrag.mode === 'vertex' || finishedDrag.mode === 'rotate' || finishedDrag.mode === 'erase-boundaries' || (finishedDrag.mode === 'erase-area' && finishedDrag.checkpointed)) s.commit();
       }
     };
 

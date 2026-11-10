@@ -38,13 +38,14 @@ export function MapCanvas() {
   const [fontTick, setFontTick] = useState(0);
   const [quickMenu, setQuickMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const { doc, selectedId, selectedEdgeIndex, marqueeSelection, selectionBox, tool, kind, grid, gridSize, view, viewport, draft, cursor, rawCursor } = useEditorStore(
+  const { doc, selectedId, selectedEdgeIndex, marqueeSelection, selectionBox, hoverTarget, tool, kind, grid, gridSize, view, viewport, draft, cursor, rawCursor } = useEditorStore(
     useShallow((s) => ({
       doc: s.doc,
       selectedId: s.selectedId,
       selectedEdgeIndex: s.selectedEdgeIndex,
       marqueeSelection: s.marqueeSelection,
       selectionBox: s.selectionBox,
+      hoverTarget: s.hoverTarget,
       tool: s.tool,
       kind: s.kind,
       grid: s.grid,
@@ -157,6 +158,8 @@ export function MapCanvas() {
           <Layer listening={false}>
             <EditorOverlay
               selected={selected}
+              hoverShape={findShape(doc.shapes, hoverTarget?.shapeId ?? null)}
+              hoverTarget={hoverTarget}
               multiSelected={doc.shapes.filter((shape) => marqueeSelection.includes(shape.id) && shape.id !== selectedId)}
               selectionBox={selectionBox}
               draft={draft}

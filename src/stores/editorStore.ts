@@ -29,6 +29,13 @@ export interface Viewport {
 
 type LabelPatch = Partial<Pick<LabelObject, 'text' | 'size' | 'tone'>>;
 
+export interface HoverTarget {
+  shapeId: string;
+  part: 'body' | 'edge' | 'vertex' | 'rotate';
+  index?: number;
+  ring?: number;
+}
+
 export interface EditorState {
   /** 'loading' until the autosave has been restored; autosave is paused while loading. */
   status: 'loading' | 'ready';
@@ -39,6 +46,7 @@ export interface EditorState {
   // --- transient UI state (never saved) ---
   selectedId: string | null;
   selectedEdgeIndex: number | null;
+  hoverTarget: HoverTarget | null;
   marqueeSelection: string[];
   selectionBox: { a: Point; b: Point } | null;
   eraserMode: 'area' | 'edges';
@@ -84,6 +92,7 @@ export interface EditorState {
   setSelectionBox: (box: { a: Point; b: Point } | null) => void;
   setEraserMode: (mode: 'area' | 'edges') => void;
   selectEdge: (index: number | null) => void;
+  setHoverTarget: (target: HoverTarget | null) => void;
   toggleGroupingSelection: (id: string) => void;
   groupSelectedLayers: () => void;
   addLayerToGroup: (layerId: string, groupId: string) => void;
@@ -235,6 +244,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   selectedId: null,
   selectedEdgeIndex: null,
+  hoverTarget: null,
   marqueeSelection: [],
   selectionBox: null,
   eraserMode: 'area',
@@ -264,7 +274,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   clearToast: (id) => set((s) => (s.toast?.id === id ? { toast: null } : {})),
   setTheme: (theme) => set({ theme }),
 
-  setTool: (tool) => set({ tool, draft: null, selectionBox: null, marqueeSelection: [] }),
+  setTool: (tool) => set({ tool, draft: null, selectionBox: null, marqueeSelection: [], hoverTarget: null }),
   setKind: (kind) => {
     const s = get();
     const sel = findShape(s.doc.shapes, s.selectedId);
@@ -289,6 +299,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setSelectionBox: (selectionBox) => set({ selectionBox }),
   setEraserMode: (eraserMode) => set({ eraserMode }),
   selectEdge: (selectedEdgeIndex) => set({ selectedEdgeIndex }),
+  setHoverTarget: (hoverTarget) => set((s) => {
+    const current = s.hoverTarget;
+    if (current?.shapeId === hoverTarget?.shapeId && current?.part === hoverTarget?.part && current?.index === hoverTarget?.index && current?.ring === hoverTarget?.ring) return s;
+    return { hoverTarget };
+  }),
   toggleGroupingSelection: (id) => set((s) => ({ groupingSelection: s.groupingSelection.includes(id) ? s.groupingSelection.filter((item) => item !== id) : [...s.groupingSelection, id] })),
   groupSelectedLayers: () => {
     const s = get();

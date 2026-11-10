@@ -16,7 +16,7 @@ export const TOOLS: ToolDef[] = [
     label: 'Select and edit',
     key: 'V',
     icon: MousePointer2,
-    hint: 'Click a shape to select it. Drag to move, drag a vertex to reshape, or drag the rotate handle above a polygon, rectangle, line, or curve. Ctrl+left-drag to detach a boxed area from polygons; blue vertices edit the new edges. Ctrl+right-drag box-selects layers for Delete. Double-click an edge to add a point, Shift-click a point to remove it. Arrow keys nudge. Scroll to zoom; drag with Space or the middle mouse button to pan.',
+    hint: 'Click a shape to select it. Drag to move, drag a vertex to reshape, or drag the rotate handle above a polygon, rectangle, line, or curve. Hold Alt while dragging a rectangle corner or circle radius handle to move that point freely; without Alt they resize normally. Ctrl+left-drag to detach a boxed area from polygons; blue vertices edit the new edges. Ctrl+right-drag box-selects layers for Delete. Double-click an edge to add a point, Shift-click a point to remove it. Arrow keys nudge. Scroll to zoom; drag with Space or the middle mouse button to pan.',
   },
   {
     id: 'poly',

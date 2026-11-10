@@ -330,7 +330,11 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const selectedShapes = s.selectedId
           ? [findShape(s.doc.shapes, s.selectedId)]
           : s.marqueeSelection.map((id) => findShape(s.doc.shapes, id)).reverse();
-        for (const sel of selectedShapes) {
+        const vertexCandidates = [
+          ...selectedShapes,
+          ...s.doc.shapes.slice().reverse().filter((shape) => !selectedShapes.some((selected) => selected?.id === shape.id)),
+        ];
+        for (const sel of vertexCandidates) {
           if (!sel || sel.hidden || sel.type === 'label') continue;
           const vi = hitVertex(sel, p, s.view.scale);
           if (vi >= 0) {

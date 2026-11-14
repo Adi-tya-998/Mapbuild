@@ -193,27 +193,69 @@ function paintShape(c: CanvasRenderingContext2D, s: MapObject) {
   paintErasures(c, s);
 }
 
+function isSurfaceCutout(shape: MapObject): shape is Extract<MapObject, { type: 'poly' | 'rect' | 'circle' }> {
+  return shape.type !== 'label' && shape.type !== 'line' && shape.type !== 'curve' && shape.kind === 'cut';
+}
+
+function paintSurfaceCutout(c: CanvasRenderingContext2D, shape: Extract<MapObject, { type: 'poly' | 'rect' | 'circle' }>) {
+  c.save();
+  c.globalCompositeOperation = 'destination-out';
+  c.fillStyle = '#000000';
+  if (shape.type === 'circle') {
+    c.beginPath();
+    c.arc(shape.pts[0][0], shape.pts[0][1], circleRadius(shape.pts), 0, Math.PI * 2);
+  } else {
+    tracePath(c, shape.pts);
+  }
+  c.fill();
+  c.restore();
+}
+
+function paintShapeOnIsolatedLayer(c: CanvasRenderingContext2D, shape: MapObject) {
+  if (!shape.cutouts?.length && !shape.holes?.length) {
+    paintShape(c, shape);
+    return;
+  }
+  const isolated = document.createElement('canvas');
+  isolated.width = c.canvas.width;
+  isolated.height = c.canvas.height;
+  const isolatedCtx = isolated.getContext('2d');
+  if (!isolatedCtx) return;
+  isolatedCtx.setTransform(c.getTransform());
+  paintShape(isolatedCtx, shape);
+  paintHoles(isolatedCtx, shape.holes);
+  paintCutouts(isolatedCtx, shape.cutouts);
+  c.save();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(isolated, 0, 0);
+  c.restore();
+}
+
 /** Paint only the created map (no sheet fill, reference image, grid, or editor overlays). */
 export function paintSheet(c: CanvasRenderingContext2D, doc: MapDocument) {
-  for (const s of doc.shapes) {
-    if (s.hidden) continue;
-    if (!s.cutouts?.length && !s.holes?.length) {
-      paintShape(c, s);
-      continue;
+  const hasSurfaceCutouts = doc.shapes.some((shape) => !shape.hidden && isSurfaceCutout(shape));
+  if (hasSurfaceCutouts) {
+    const composite = document.createElement('canvas');
+    composite.width = c.canvas.width;
+    composite.height = c.canvas.height;
+    const compositeCtx = composite.getContext('2d');
+    if (!compositeCtx) return;
+    compositeCtx.setTransform(c.getTransform());
+    for (const shape of doc.shapes) {
+      if (shape.hidden) continue;
+      if (isSurfaceCutout(shape)) paintSurfaceCutout(compositeCtx, shape);
+      else paintShapeOnIsolatedLayer(compositeCtx, shape);
     }
-    const isolated = document.createElement('canvas');
-    isolated.width = c.canvas.width;
-    isolated.height = c.canvas.height;
-    const isolatedCtx = isolated.getContext('2d');
-    if (!isolatedCtx) continue;
-    isolatedCtx.setTransform(c.getTransform());
-    paintShape(isolatedCtx, s);
-    paintHoles(isolatedCtx, s.holes);
-    paintCutouts(isolatedCtx, s.cutouts);
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.drawImage(isolated, 0, 0);
+    c.drawImage(composite, 0, 0);
     c.restore();
+    return;
+  }
+
+  for (const s of doc.shapes) {
+    if (s.hidden) continue;
+    paintShapeOnIsolatedLayer(c, s);
   }
 }
 

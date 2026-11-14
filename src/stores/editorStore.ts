@@ -6,7 +6,7 @@ import { createId } from '../lib/id';
 import { loadTheme } from '../lib/storage';
 import type { ThemeMode } from '../lib/storage';
 import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH, SHEET_SIZE } from '../types/map';
-import type { Draft, EdgeGap, EdgeOutline, LabelObject, MapObject, Outline, Point, SurfaceKind, Tool, XY } from '../types/map';
+import type { Draft, EdgeGap, EdgeOutline, FilledObject, LabelObject, MapObject, Outline, Point, SurfaceKind, Tool, XY } from '../types/map';
 import type { Background, MapContent, MapDocument } from '../types/project';
 import { emptyDocument } from '../features/projects/sampleProject';
 
@@ -121,6 +121,7 @@ export interface EditorState {
   openDocument: (doc: MapDocument) => void;
   resetSheetForOfficialMap: (mapName: string) => void;
   addShape: (shape: MapObject) => void;
+  cutoutArea: (cutter: FilledObject, beforeShapeId?: string) => void;
   addPolygonVertex: (id: string, edgeIndex: number, t: number, point: Point) => void;
   detachPolygonsInBox: (a: Point, b: Point) => void;
   finishPolygon: () => void;
@@ -230,6 +231,67 @@ function geometryShapes(
   return output;
 }
 
+type CutoutShape = Extract<MapObject, { type: 'poly' | 'rect' | 'circle' }>;
+
+function polygonizedShape(shape: CutoutShape): Extract<MapObject, { type: 'poly' | 'rect' }> {
+  if (shape.type !== 'circle') return shape;
+  const [cx, cy] = shape.pts[0];
+  const [hx, hy] = shape.pts[1];
+  const radius = Math.hypot(hx - cx, hy - cy);
+  const sides = 64;
+  const baseAngle = Math.atan2(hy - cy, hx - cx) - (Math.PI * 2) / sides;
+  const pts = Array.from({ length: sides }, (_, i): Point => {
+    const angle = baseAngle + (Math.PI * 2 * i) / sides;
+    return [cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius];
+  });
+  const outline = shape.edgeOutlines?.[0] ?? shape.outline;
+  const width = shape.edgeWidths?.[0] ?? shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
+  return {
+    ...shape,
+    type: 'poly',
+    pts,
+    outline,
+    outlineWidth: width,
+    edgeOutlines: Array.from({ length: sides }, () => outline),
+    edgeWidths: Array.from({ length: sides }, () => width),
+    edgeGaps: undefined,
+  };
+}
+
+function filledGeometry(shape: CutoutShape): MultiPolygon {
+  const polygon = polygonizedShape(shape);
+  return [[closedRing(polygon.pts), ...(polygon.holes ?? []).map(closedRing)]];
+}
+
+function subtractCutout(shape: MapObject, cutter: MultiPolygon): { pieces: MapObject[]; changed: boolean } {
+  if (shape.hidden || (shape.type !== 'poly' && shape.type !== 'rect' && shape.type !== 'circle')) return { pieces: [shape], changed: false };
+  const polygon = polygonizedShape(shape);
+  const source: MultiPolygon = [[closedRing(polygon.pts), ...(polygon.holes ?? []).map(closedRing)]];
+  const overlap = polygonClipping.intersection(source, cutter);
+  if (!overlap.length) return { pieces: [shape], changed: false };
+  const difference = polygonClipping.difference(source, cutter);
+  const pieces = geometryShapes(polygon, difference, false, shape.groupId).map((piece) => ({
+    ...piece,
+    detached: shape.detached,
+    groupName: shape.groupName,
+  }));
+  return { pieces, changed: true };
+}
+
+function bakeLegacyCutoutLayers(shapes: MapObject[]): MapObject[] {
+  let baked: MapObject[] = [];
+  for (const shape of shapes) {
+    if ((shape.type !== 'poly' && shape.type !== 'rect' && shape.type !== 'circle') || shape.kind !== 'cut') {
+      baked.push(shape);
+      continue;
+    }
+    if (shape.hidden) continue;
+    const cutter = filledGeometry(shape);
+    baked = baked.flatMap((lowerShape) => subtractCutout(lowerShape, cutter).pieces);
+  }
+  return baked;
+}
+
 // Shapes are never mutated in place, so a snapshot only needs to keep references.
 function sameContent(a: MapContent, b: MapContent): boolean {
   if (a.background !== b.background) return false;
@@ -269,7 +331,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   future: [],
   pending: null,
 
-  hydrate: (doc) => set({ doc, status: 'ready', past: [], future: [], pending: null, selectedId: null, selectedEdgeIndex: null, groupingSelection: [], draft: null }),
+  hydrate: (doc) => set({ doc: { ...doc, shapes: bakeLegacyCutoutLayers(doc.shapes) }, status: 'ready', past: [], future: [], pending: null, selectedId: null, selectedEdgeIndex: null, groupingSelection: [], draft: null }),
   showToast: (message) => set({ toast: { id: Date.now() + Math.random(), message } }),
   clearToast: (id) => set((s) => (s.toast?.id === id ? { toast: null } : {})),
   setTheme: (theme) => set({ theme }),
@@ -279,8 +341,12 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     const s = get();
     const sel = findShape(s.doc.shapes, s.selectedId);
     set({ kind });
-    if (sel && sel.type !== 'label' && s.tool === 'select') {
-      s.act((doc) => mapShape(doc, sel.id, (o) => (o.type === 'label' ? o : { ...o, kind })));
+    if (sel && s.tool === 'select') {
+      if (kind === 'cut' && (sel.type === 'poly' || sel.type === 'rect' || sel.type === 'circle')) {
+        s.cutoutArea(sel, sel.id);
+      } else if (kind !== 'cut' && sel.type !== 'label') {
+        s.act((doc) => mapShape(doc, sel.id, (o) => (o.type === 'label' ? o : { ...o, kind })));
+      }
     }
   },
   toggleGrid: () => set((s) => ({ grid: !s.grid })),
@@ -490,7 +556,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     get().showToast('Sheet cleared. Press Ctrl+Z or the undo button to bring it back.');
   },
   openDocument: (next) => {
-    get().act((doc) => ({ ...doc, name: next.name, shapes: next.shapes, background: next.background }));
+    const shapes = bakeLegacyCutoutLayers(next.shapes);
+    get().act((doc) => ({ ...doc, name: next.name, shapes, background: next.background }));
     set({ selectedId: null, selectedEdgeIndex: null, draft: null });
   },
   resetSheetForOfficialMap: (mapName) => {
@@ -501,6 +568,29 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   addShape: (shape) => {
     get().act((doc) => ({ ...doc, shapes: [...doc.shapes, shape] }));
     set({ selectedId: shape.id, selectedEdgeIndex: null });
+  },
+  cutoutArea: (cutter, beforeShapeId) => {
+    const s = get();
+    const cutterIndex = beforeShapeId ? s.doc.shapes.findIndex((shape) => shape.id === beforeShapeId) : s.doc.shapes.length;
+    if (beforeShapeId && cutterIndex < 0) return;
+    const geometry = filledGeometry(cutter);
+    let changed = false;
+    s.act((doc) => {
+      const shapes: MapObject[] = [];
+      doc.shapes.forEach((shape, index) => {
+        if (shape.id === beforeShapeId) return;
+        if (index < cutterIndex) {
+          const result = subtractCutout(shape, geometry);
+          changed ||= result.changed;
+          shapes.push(...result.pieces);
+        } else {
+          shapes.push(shape);
+        }
+      });
+      return { ...doc, shapes };
+    });
+    set({ selectedId: null, selectedEdgeIndex: null, marqueeSelection: [] });
+    get().showToast(changed ? 'Cutout applied directly to the map. Press Ctrl+Z to undo.' : 'The cutout did not overlap any filled map areas.');
   },
   addPolygonVertex: (id, edgeIndex, t, point) => {
     get().act((doc) => mapShape(doc, id, (shape) => {
@@ -575,7 +665,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     const { draft, kind } = get();
     set({ draft: null });
     if (draft?.type === 'poly' && draft.pts.length >= 3) {
-      get().addShape({ id: createId(), type: 'poly', kind, pts: draft.pts });
+      const shape = { id: createId(), type: 'poly' as const, kind, pts: draft.pts };
+      if (kind === 'cut') get().cutoutArea(shape);
+      else get().addShape(shape);
     }
   },
   removeSelected: () => {

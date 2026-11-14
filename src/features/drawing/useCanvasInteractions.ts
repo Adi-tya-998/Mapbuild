@@ -596,21 +596,26 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const { a, b } = s.draft;
         s.setDraft(null);
         if (Math.abs(b.x - a.x) >= 1 && Math.abs(b.y - a.y) >= 1) {
-          s.addShape({ id: createId(), type: 'rect', kind: s.kind, pts: rectPts(a.x, a.y, b.x, b.y) });
+          const shape = { id: createId(), type: 'rect' as const, kind: s.kind, pts: rectPts(a.x, a.y, b.x, b.y) };
+          if (s.kind === 'cut') s.cutoutArea(shape);
+          else s.addShape(shape);
         }
       }
       if (s.draft?.type === 'circle') {
         const { center, edge } = s.draft;
         s.setDraft(null);
         if (Math.hypot(edge.x - center.x, edge.y - center.y) >= 1) {
-          s.addShape({ id: createId(), type: 'circle', kind: s.kind, pts: [[center.x, center.y], [edge.x, edge.y]] });
+          const shape = { id: createId(), type: 'circle' as const, kind: s.kind, pts: [[center.x, center.y], [edge.x, edge.y]] as Point[] };
+          if (s.kind === 'cut') s.cutoutArea(shape);
+          else s.addShape(shape);
         }
       }
       if (s.draft?.type === 'line') {
         const { a, b } = s.draft;
         s.setDraft(null);
         if (Math.hypot(b.x - a.x, b.y - a.y) >= 1) {
-          s.addShape({ id: createId(), type: 'line', kind: s.kind, pts: [[a.x, a.y], [b.x, b.y]] });
+          if (s.kind === 'cut') s.showToast('Cutout works with filled shapes: polygon, rectangle, or circle.');
+          else s.addShape({ id: createId(), type: 'line', kind: s.kind, pts: [[a.x, a.y], [b.x, b.y]] });
         }
       }
       if (s.draft?.type === 'curve') {
@@ -619,7 +624,10 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         const last = pts[pts.length - 1];
         if (end && last && Math.hypot(end.x - last[0], end.y - last[1]) > 0.01) pts.push([end.x, end.y]);
         s.setDraft(null);
-        if (pts.length >= 2) s.addShape({ id: createId(), type: 'curve', kind: s.kind, pts });
+        if (pts.length >= 2) {
+          if (s.kind === 'cut') s.showToast('Cutout works with filled shapes: polygon, rectangle, or circle.');
+          else s.addShape({ id: createId(), type: 'curve', kind: s.kind, pts });
+        }
       }
       if (drag) {
         const finishedDrag = drag;

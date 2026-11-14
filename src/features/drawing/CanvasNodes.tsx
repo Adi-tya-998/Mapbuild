@@ -109,6 +109,18 @@ function Cutouts({ cutouts }: { cutouts: Point[][] | undefined }) {
   </>;
 }
 
+function isSurfaceCutout(shape: MapObject): shape is Extract<MapObject, { type: 'poly' | 'rect' | 'circle' }> {
+  return shape.type !== 'label' && shape.type !== 'line' && shape.type !== 'curve' && shape.kind === 'cut';
+}
+
+function CutoutMasks({ shapes }: { shapes: MapObject[] }) {
+  return <>
+    {shapes.map((shape) => shape.type === 'circle'
+      ? <Circle key={shape.id} x={shape.pts[0][0]} y={shape.pts[0][1]} radius={circleRadius(shape.pts)} fill="#000000" globalCompositeOperation="destination-out" perfectDrawEnabled={false} />
+      : isSurfaceCutout(shape) && <Line key={shape.id} points={flatten(shape.pts)} closed fill="#000000" globalCompositeOperation="destination-out" perfectDrawEnabled={false} />)}
+  </>;
+}
+
 function ShapeHoles({ holes }: { holes: Point[][] | undefined }) {
   if (!holes?.length) return null;
   return <>
@@ -119,22 +131,43 @@ function ShapeHoles({ holes }: { holes: Point[][] | undefined }) {
 export const SheetShapes = memo(function SheetShapes({ shapes }: ShapesProps) {
   const layers: ReactElement[] = [];
   let regularShapes: ReactElement[] = [];
+  let regularMasks: MapObject[] | null = null;
   let batchIndex = 0;
+  const masksAbove: MapObject[][] = Array.from({ length: shapes.length }, () => []);
+  let masks: MapObject[] = [];
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    masksAbove[i] = masks;
+    if (!shapes[i].hidden && isSurfaceCutout(shapes[i])) masks = [...masks, shapes[i]];
+  }
+  const sameMasks = (left: MapObject[], right: MapObject[]) => left.length === right.length && left.every((shape, i) => shape.id === right[i].id);
   const flushRegularShapes = () => {
     if (!regularShapes.length) return;
-    layers.push(<Layer key={`map-shapes-${batchIndex++}`} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>{regularShapes}</Layer>);
+    layers.push(<Layer key={`map-shapes-${batchIndex++}`} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>
+      {regularShapes}
+      {regularMasks?.length ? <CutoutMasks shapes={regularMasks} /> : null}
+    </Layer>);
     regularShapes = [];
+    regularMasks = null;
   };
-  for (const shape of shapes) {
+  for (let i = 0; i < shapes.length; i++) {
+    const shape = shapes[i];
     if (shape.hidden) continue;
+    if (isSurfaceCutout(shape)) {
+      flushRegularShapes();
+      continue;
+    }
+    const masksForShape = masksAbove[i];
     if (shape.cutouts?.length || shape.holes?.length) {
       flushRegularShapes();
       layers.push(<Layer key={shape.id} listening={false} clipX={0} clipY={0} clipWidth={SHEET_SIZE} clipHeight={SHEET_SIZE}>
         <ShapeContent s={shape} />
         <ShapeHoles holes={shape.holes} />
         <Cutouts cutouts={shape.cutouts} />
+        {masksForShape.length ? <CutoutMasks shapes={masksForShape} /> : null}
       </Layer>);
     } else {
+      if (regularMasks && !sameMasks(regularMasks, masksForShape)) flushRegularShapes();
+      if (!regularMasks) regularMasks = masksForShape;
       regularShapes.push(<ShapeContent key={shape.id} s={shape} />);
     }
   }
@@ -341,7 +374,7 @@ function DraftPreview({
   kind: SurfaceKind;
   scale: number;
 }) {
-  const fill = SURFACES[kind].fill;
+  const fill = kind === 'cut' ? 'rgba(10,166,183,.18)' : SURFACES[kind].fill;
   if (draft.type === 'rect') {
     const pts = rectPts(draft.a.x, draft.a.y, draft.b.x, draft.b.y);
     return (

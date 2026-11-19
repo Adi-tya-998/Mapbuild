@@ -162,3 +162,11 @@ src/
 - Local branch: `experiment/feature-boundaries`, in a separate worktree and rebased onto `ea0644e`. The original `main` working tree is clean after the requested cutout commit.
 - Remote update check: blocked by DNS resolution failure for `github.com`; local `main` has seven commits beyond its last known remote tracking ref, so remote freshness is unverified. This branch is not pushed.
 - Step 0 makes no source-code changes. Step 1 requires explicit user approval (`continue`) after reviewing this plan.
+
+## Step 1 safety-net notes
+
+- Added a Node test command (`npm test`) without adding a package dependency, plus `tests/characterization.test.mjs`; it loads the current TypeScript modules and characterizes parsing/serialization, the checked-in map JSON files, geometry/snap behavior, store history, area and edge erasing, cutout subtraction and legacy migration, detach behavior, and transparent PNG paint calls.
+- The suite currently has 12 passing cases. The PNG assertion verifies the painter skips a white sheet fill and hidden objects; it is not a pixel-level screenshot comparison.
+- `npm run build` passed against the same source baseline in the original project worktree. The refactor worktree has no local `node_modules`; tests were executed using the original worktree's installed dependencies through `NODE_PATH`. The test command itself needs only dependencies already declared in this project.
+- No UI change was made. Reference screenshots for pixel-level export comparison remain unavailable, so that check is still pending before rendering internals are moved.
+- Step 1 is complete. Stop here and wait for explicit `continue` before Step 2.

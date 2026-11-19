@@ -22,6 +22,10 @@ const geometry = require('../src/lib/geometry.ts');
 const validation = require('../src/lib/validation.ts');
 const storeModule = require('../src/stores/editorStore.ts');
 const exportModule = require('../src/lib/exportPng.ts');
+const eraserHandlers = require('../src/features/drawing/handlers/eraser.ts');
+const pointHandlers = require('../src/features/drawing/handlers/point.ts');
+const selectHandlers = require('../src/features/drawing/handlers/select.ts');
+const drawingHandlers = require('../src/features/drawing/handlers/shapeDrawing.ts');
 
 const { rectPts, snapValue, pointInPolygon } = geometry;
 const { parseProject, parseProjectText, serializeProject, ProjectParseError } = validation;
@@ -73,6 +77,30 @@ test('geometry normalizes rectangle corners, snaps to grid, and tests polygon in
   assert.equal(pointInPolygon({ x: 15, y: 5 }, [[0, 0], [10, 0], [10, 10], [0, 10]]), false);
 });
 
+test('extracted shape drawing handler starts, updates, and commits a rectangle draft', () => {
+  resetStore();
+  drawingHandlers.beginShapeDrawing(useEditorStore.getState(), 'rect', { x: 10, y: 20 }, { x: 10, y: 20 });
+  drawingHandlers.moveShapeDraft(useEditorStore.getState(), { x: 80, y: 90 }, { x: 80, y: 90 });
+  drawingHandlers.finishShapeDraft(useEditorStore.getState());
+  const shape = useEditorStore.getState().doc.shapes[0];
+  assert.equal(shape.type, 'rect');
+  assert.deepEqual(shape.pts, [[10, 20], [80, 20], [80, 90], [10, 90]]);
+});
+
+test('extracted point and select handlers retain vertex insertion and movement behavior', () => {
+  const original = floorRect();
+  resetStore([original]);
+  pointHandlers.handlePointTool(useEditorStore.getState(), [original], { x: 50, y: 10 });
+  assert.equal(useEditorStore.getState().doc.shapes[0].pts.length, 5);
+
+  resetStore([original]);
+  const drag = selectHandlers.beginSelectTool(useEditorStore.getState(), { x: 20, y: 20 }, { shiftKey: false, altKey: false }, { style: {} });
+  assert.equal(drag?.mode, 'move');
+  selectHandlers.updateSelectDrag(useEditorStore.getState(), { x: 30, y: 40 }, { x: 30, y: 40 }, drag, { snap: false, alt: false, gridSize: 2 }, snapValue);
+  assert.deepEqual(useEditorStore.getState().doc.shapes[0].pts[0], [20, 30]);
+  assert.deepEqual(selectHandlers.selectHoverTargetAt(useEditorStore.getState().doc.shapes, { x: 20, y: 30 }, 1, null), { shapeId: original.id, part: 'vertex', index: 0, ring: 0 });
+});
+
 test('store add, undo, and redo preserve document history', () => {
   resetStore();
   const shape = floorRect();
@@ -92,6 +120,21 @@ test('area eraser stores a continuous stroke on the target shape', () => {
   state.addErasurePoint('floor-1', [24.1, 20], false);
   const strokes = useEditorStore.getState().doc.shapes[0].erasures;
   assert.deepEqual(strokes, [[[20, 20], [24, 20]]]);
+});
+
+test('extracted eraser handler preserves area and edge modes', () => {
+  resetStore([floorRect()]);
+  let drag = eraserHandlers.beginEraser(useEditorStore.getState(), { x: 50, y: 50 }, false);
+  assert.equal(drag?.mode, 'erase-area');
+  eraserHandlers.moveEraser(useEditorStore.getState(), { x: 54, y: 50 }, drag);
+  assert.equal(useEditorStore.getState().doc.shapes[0].cutouts.length, 1);
+
+  resetStore([floorRect()]);
+  useEditorStore.getState().setEraserMode('edges');
+  drag = eraserHandlers.beginEraser(useEditorStore.getState(), { x: 50, y: 10 }, false);
+  assert.equal(drag?.mode, 'erase-boundaries');
+  eraserHandlers.finishBoundaryEraser(useEditorStore.getState(), drag);
+  assert.equal(useEditorStore.getState().doc.shapes[0].pts.length, 6);
 });
 
 test('edge eraser creates outline gaps and finalizes their endpoints as polygon vertices', () => {

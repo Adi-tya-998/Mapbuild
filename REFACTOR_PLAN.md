@@ -166,7 +166,16 @@ src/
 ## Step 1 safety-net notes
 
 - Added a Node test command (`npm test`) without adding a package dependency, plus `tests/characterization.test.mjs`; it loads the current TypeScript modules and characterizes parsing/serialization, the checked-in map JSON files, geometry/snap behavior, store history, area and edge erasing, cutout subtraction and legacy migration, detach behavior, and transparent PNG paint calls.
-- The suite currently has 12 passing cases. The PNG assertion verifies the painter skips a white sheet fill and hidden objects; it is not a pixel-level screenshot comparison.
+- At Step 1 completion the suite had 12 passing cases. Step 3 adds three handler regression cases (15 total). The PNG assertion verifies the painter skips a white sheet fill and hidden objects; it is not a pixel-level screenshot comparison.
 - `npm run build` passed against the same source baseline in the original project worktree. The refactor worktree has no local `node_modules`; tests were executed using the original worktree's installed dependencies through `NODE_PATH`. The test command itself needs only dependencies already declared in this project.
 - No UI change was made. Reference screenshots for pixel-level export comparison remain unavailable, so that check is still pending before rendering internals are moved.
 - Step 1 is complete. Stop here and wait for explicit `continue` before Step 2.
+
+## Step 3 interaction-dispatch notes
+
+- At the user's direction, Step 3 was done before the Step 2 store-slice extraction. The store stays as-is; Step 2 remains pending.
+- Added `src/features/drawing/interactionTypes.ts` for pointer drag state and `src/features/drawing/handlers/` modules for selection/transform, shape drawing, point insertion, and eraser actions. `useCanvasInteractions.ts` retains the native event listeners, pointer capture, coordinate conversion, shared drag lifetime, pan/zoom, and completion/commit routing.
+- The selection handler owns hit testing and shape movement/rotation/vertex edits; drawing handlers own tool draft start/move/finalization; eraser handlers own area and edge hit behavior; the point handler owns polygon edge insertion. Behavior was moved from the previous hook implementation, with regression cases added for the extracted paths.
+- Verification: all 15 `npm test` cases passed. TypeScript checking passed with a temporary resolver configuration pointing to the original worktree dependencies. Vite's production build completed from this worktree; it reports the existing large-chunk advisory.
+- No intentional behavior change. Manual desktop interaction review remains useful because the automated suite exercises handler logic but not real browser pointer capture or Konva event timing.
+- Step 3 is complete. Stop here and wait for explicit `continue` before Step 4.

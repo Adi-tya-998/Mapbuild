@@ -1,267 +1,13 @@
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
-import { circleRadius, hitTest, hitVertex, labelBox, moveRectCorner, nearestEdge, nearestPathEdge, pointInPolygon, pointsCenter, rectPts, rotatePoints, rotationHandlePoint, snapValue, HIT_PX } from '../../lib/geometry';
-import { createId } from '../../lib/id';
+import { nearestEdge, snapValue, HIT_PX } from '../../lib/geometry';
 import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
-import type { HoverTarget } from '../../stores/editorStore';
-import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH } from '../../types/map';
-import type { MapObject, Point, XY } from '../../types/map';
-
-const ERASER_HIT_PX = 8;
-const POINT_HIT_PX = 10;
-
-type PolygonEdgeHit = {
-  shape: Extract<MapObject, { type: 'poly' | 'rect' }>;
-  edgeIndex: number;
-  t: number;
-  point: Point;
-  distance: number;
-};
-
-function nearestPolygonEdge(shapes: MapObject[], p: XY): PolygonEdgeHit | null {
-  let nearest: PolygonEdgeHit | null = null;
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const shape = shapes[i];
-    if (shape.hidden || (shape.type !== 'poly' && shape.type !== 'rect')) continue;
-    const edge = nearestPathEdge(shape.pts, p, true);
-    if (edge && (!nearest || edge.d < nearest.distance)) {
-      nearest = { shape, edgeIndex: edge.i, t: edge.t, point: [edge.x, edge.y], distance: edge.d };
-    }
-  }
-  return nearest;
-}
-
-function nearestBoundary(shape: MapObject, p: XY): { distance: number; point: Point; edgeIndex?: number; t?: number } | null {
-  if (shape.type === 'label') return null;
-  if (shape.type === 'circle') {
-    if ((shape.edgeOutlines?.[0] ?? shape.outline) === 'none') return null;
-    const dx = p.x - shape.pts[0][0];
-    const dy = p.y - shape.pts[0][1];
-    const radius = circleRadius(shape.pts);
-    const distanceFromCenter = Math.hypot(dx, dy);
-    const directionX = distanceFromCenter === 0 ? 1 : dx / distanceFromCenter;
-    const directionY = distanceFromCenter === 0 ? 0 : dy / distanceFromCenter;
-    return { distance: Math.abs(distanceFromCenter - radius), point: [shape.pts[0][0] + directionX * radius, shape.pts[0][1] + directionY * radius] };
-  }
-  if (shape.type === 'poly' || shape.type === 'rect') {
-    let best: { distance: number; point: Point; edgeIndex: number; t: number } | null = null;
-    for (let i = 0; i < shape.pts.length; i++) {
-      if ((shape.edgeOutlines?.[i] ?? shape.outline) === 'none') continue;
-      const hit = nearestPathEdge([shape.pts[i], shape.pts[(i + 1) % shape.pts.length]], p, false);
-      if (hit && (!best || hit.d < best.distance)) best = { distance: hit.d, point: [hit.x, hit.y], edgeIndex: i, t: hit.t };
-    }
-    return best;
-  }
-  if ((shape.edgeOutlines?.[0] ?? shape.outline) === 'none') return null;
-  const hit = nearestPathEdge(shape.pts, p, false);
-  return hit ? { distance: hit.d, point: [hit.x, hit.y], t: hit.t } : null;
-}
-
-type Drag =
-  | { mode: 'pan'; x: number; y: number }
-  | { mode: 'move'; start: XY; members: Array<{ id: string; pts: Point[]; holes?: Point[][]; erasures?: Point[][]; cutouts?: Point[][] }> }
-  | { mode: 'erase-boundaries'; onlyPolygon: boolean; paths: Map<string, { activePath: boolean; edgeIndex?: number; lastT?: number }> }
-  | { mode: 'erase-area'; last: XY; active: Map<string, boolean>; checkpointed: boolean }
-  | { mode: 'box-select'; start: XY; end: XY }
-  | { mode: 'detach-area'; start: XY; end: XY }
-  | { mode: 'rotate'; id: string; center: Point; startAngle: number; original: MapObject }
-  | { mode: 'vertex'; id: string; index: number; free: boolean };
-
-function circleAsPolygon(shape: Extract<MapObject, { type: 'circle' }>): Extract<MapObject, { type: 'poly' }> {
-  const [cx, cy] = shape.pts[0];
-  const [hx, hy] = shape.pts[1];
-  const radius = circleRadius(shape.pts);
-  const sides = 48;
-  const angle = Math.atan2(hy - cy, hx - cx) - (Math.PI * 2) / sides;
-  const pts = Array.from({ length: sides }, (_, i): Point => {
-    const at = angle + (Math.PI * 2 * i) / sides;
-    return [cx + Math.cos(at) * radius, cy + Math.sin(at) * radius];
-  });
-  const outline = shape.edgeOutlines?.[0] ?? shape.outline ?? 'none';
-  const width = shape.edgeWidths?.[0] ?? shape.outlineWidth ?? DEFAULT_OUTLINE_WIDTH;
-  return {
-    ...shape,
-    type: 'poly',
-    pts,
-    outline,
-    outlineWidth: width,
-    edgeOutlines: Array.from({ length: sides }, () => outline),
-    edgeWidths: Array.from({ length: sides }, () => width),
-    edgeGaps: undefined,
-  };
-}
-
-function rotateShape(shape: MapObject, center: Point, angle: number): MapObject {
-  if (shape.type === 'label' || shape.type === 'circle') return shape;
-  const pts = rotatePoints(shape.pts, center, angle);
-  const holes = shape.holes?.map((ring) => rotatePoints(ring, center, angle));
-  const rotateStrokes = (strokes: Point[][] | undefined) => strokes?.map((stroke) => rotatePoints(stroke, center, angle));
-  const geometry = {
-    pts,
-    ...(holes ? { holes } : {}),
-    ...(shape.erasures ? { erasures: rotateStrokes(shape.erasures) } : {}),
-    ...(shape.cutouts ? { cutouts: rotateStrokes(shape.cutouts) } : {}),
-  };
-  return shape.type === 'rect' ? { ...shape, ...geometry, type: 'poly' } : { ...shape, ...geometry };
-}
-
-function vertexAddress(shape: MapObject, vertexIndex: number): Pick<HoverTarget, 'index' | 'ring'> {
-  if (vertexIndex < shape.pts.length) return { index: vertexIndex, ring: 0 };
-  let index = vertexIndex - shape.pts.length;
-  for (let ring = 0; ring < (shape.type === 'poly' || shape.type === 'rect' ? shape.holes?.length ?? 0 : 0); ring++) {
-    const points = shape.type === 'poly' || shape.type === 'rect' ? shape.holes?.[ring] ?? [] : [];
-    if (index < points.length) return { index, ring: ring + 1 };
-    index -= points.length;
-  }
-  return { index: vertexIndex, ring: 0 };
-}
-
-function hoverTargetAt(shapes: MapObject[], p: XY, scale: number, selectedId: string | null): HoverTarget | null {
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const shape = shapes[i];
-    if (shape.hidden) continue;
-    if (shape.id === selectedId && (shape.type === 'poly' || shape.type === 'rect' || shape.type === 'line' || shape.type === 'curve')) {
-      const [x, y] = rotationHandlePoint(shape.pts, scale);
-      if (Math.hypot(p.x - x, p.y - y) * scale <= 12) return { shapeId: shape.id, part: 'rotate' };
-    }
-    if (shape.type !== 'label') {
-      const vertex = hitVertex(shape, p, scale);
-      if (vertex >= 0) return { shapeId: shape.id, part: 'vertex', ...vertexAddress(shape, vertex) };
-    }
-    if (shape.type === 'circle') {
-      if (Math.abs(Math.hypot(p.x - shape.pts[0][0], p.y - shape.pts[0][1]) - circleRadius(shape.pts)) * scale <= HIT_PX) {
-        return { shapeId: shape.id, part: 'edge', index: 0, ring: 0 };
-      }
-    } else if (shape.type === 'line' || shape.type === 'curve') {
-      const edge = nearestPathEdge(shape.pts, p, false);
-      if (edge && edge.d * scale <= HIT_PX) return { shapeId: shape.id, part: 'edge', index: edge.i, ring: 0 };
-    } else if (shape.type === 'poly' || shape.type === 'rect') {
-      const rings = [shape.pts, ...(shape.holes ?? [])];
-      for (let ring = 0; ring < rings.length; ring++) {
-        const edge = nearestPathEdge(rings[ring], p, true);
-        if (edge && edge.d * scale <= HIT_PX) return { shapeId: shape.id, part: 'edge', index: edge.i, ring };
-      }
-    }
-    if (hitTest([shape], p, scale)) return { shapeId: shape.id, part: 'body' };
-  }
-  return null;
-}
-
-function shapeUnderBrush(shape: MapObject, p: XY, radius: number): boolean {
-  if (shape.hidden) return false;
-  if (shape.type === 'label') {
-    const box = labelBox(shape);
-    return p.x >= box.x0 - radius && p.x <= box.x1 + radius && p.y >= box.y0 - radius && p.y <= box.y1 + radius;
-  }
-  if (shape.type === 'circle') return Math.hypot(p.x - shape.pts[0][0], p.y - shape.pts[0][1]) <= circleRadius(shape.pts) + radius;
-  if (shape.type === 'line' || shape.type === 'curve') {
-    return (nearestPathEdge(shape.pts, p, false)?.d ?? Infinity) <= radius + (shape.outlineWidth ?? 0.75) / 2;
-  }
-  const insideOuter = pointInPolygon(p, shape.pts);
-  const insideHole = shape.holes?.some((ring) => pointInPolygon(p, ring)) ?? false;
-  const nearHole = shape.holes?.some((ring) => (nearestPathEdge(ring, p, true)?.d ?? Infinity) <= radius) ?? false;
-  return (insideOuter && !insideHole) || (nearestPathEdge(shape.pts, p, true)?.d ?? Infinity) <= radius || nearHole;
-}
-
-function eraseAreaAlongPath(
-  s: ReturnType<typeof useEditorStore.getState>,
-  from: XY,
-  to: XY,
-  drag: Extract<Drag, { mode: 'erase-area' }>,
-): void {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / Math.max(0.35, ERASER_WIDTH / 3)));
-  const updates: Array<{ id: string; point: Point; startNewStroke: boolean }> = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const point: Point = [from.x + dx * t, from.y + dy * t];
-    const hits = s.doc.shapes.filter((shape) => shapeUnderBrush(shape, { x: point[0], y: point[1] }, ERASER_WIDTH / 2));
-    const hitIds = new Set(hits.map((shape) => shape.id));
-    for (const id of drag.active.keys()) if (!hitIds.has(id)) drag.active.set(id, false);
-    for (const shape of hits) {
-      updates.push({ id: shape.id, point, startNewStroke: !drag.active.get(shape.id) });
-      drag.active.set(shape.id, true);
-    }
-  }
-  if (!updates.length) return;
-  if (!drag.checkpointed) {
-    s.select(null);
-    s.checkpoint();
-    drag.checkpointed = true;
-  }
-  s.addCutoutPoints(updates);
-}
-
-function shapeIntersectsBox(shape: MapObject, a: XY, b: XY): boolean {
-  if (shape.hidden) return false;
-  const x0 = Math.min(a.x, b.x);
-  const x1 = Math.max(a.x, b.x);
-  const y0 = Math.min(a.y, b.y);
-  const y1 = Math.max(a.y, b.y);
-  const inside = (point: Point) => point[0] >= x0 && point[0] <= x1 && point[1] >= y0 && point[1] <= y1;
-  if (shape.type === 'label') {
-    const box = labelBox(shape);
-    return box.x0 <= x1 && box.x1 >= x0 && box.y0 <= y1 && box.y1 >= y0;
-  }
-  if (shape.type === 'circle') {
-    const [cx, cy] = shape.pts[0];
-    const closestX = Math.max(x0, Math.min(x1, cx));
-    const closestY = Math.max(y0, Math.min(y1, cy));
-    return Math.hypot(cx - closestX, cy - closestY) <= circleRadius(shape.pts);
-  }
-  const intersectsSegment = (from: Point, to: Point) => {
-    let lo = 0;
-    let hi = 1;
-    const dx = to[0] - from[0];
-    const dy = to[1] - from[1];
-    for (const [p, q] of [[-dx, from[0] - x0], [dx, x1 - from[0]], [-dy, from[1] - y0], [dy, y1 - from[1]]] as const) {
-      if (Math.abs(p) < 1e-9) { if (q < 0) return false; continue; }
-      const t = q / p;
-      if (p < 0) lo = Math.max(lo, t);
-      else hi = Math.min(hi, t);
-      if (lo > hi) return false;
-    }
-    return true;
-  };
-  if (shape.pts.some(inside)) return true;
-  const corners: Point[] = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-  if ((shape.type === 'poly' || shape.type === 'rect') && corners.some((point) =>
-    pointInPolygon({ x: point[0], y: point[1] }, shape.pts) && !(shape.holes?.some((ring) => pointInPolygon({ x: point[0], y: point[1] }, ring)) ?? false),
-  )) return true;
-  const edgeCount = shape.type === 'poly' || shape.type === 'rect' ? shape.pts.length : shape.pts.length - 1;
-  for (let i = 0; i < edgeCount; i++) {
-    if (intersectsSegment(shape.pts[i], shape.pts[(i + 1) % shape.pts.length])) return true;
-  }
-  return false;
-}
-
-function boundaryHits(shapes: MapObject[], p: XY, scale: number, onlyPolygon: boolean): Array<{ shape: MapObject; edge: NonNullable<ReturnType<typeof nearestBoundary>> }> {
-  const hits: Array<{ shape: MapObject; edge: NonNullable<ReturnType<typeof nearestBoundary>> }> = [];
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const shape = shapes[i];
-    if (shape.hidden || (onlyPolygon && shape.type !== 'poly' && shape.type !== 'rect')) continue;
-    const edge = nearestBoundary(shape, p);
-    if (edge && edge.distance * scale <= ERASER_HIT_PX) hits.push({ shape, edge });
-  }
-  return hits;
-}
-
-function eraseBoundaryHits(s: ReturnType<typeof useEditorStore.getState>, hits: ReturnType<typeof boundaryHits>, paths: Map<string, { activePath: boolean; edgeIndex?: number; lastT?: number }>) {
-  const currentIds = new Set(hits.map(({ shape }) => shape.id));
-  for (const [id, path] of paths) if (!currentIds.has(id)) paths.set(id, { activePath: false });
-  for (const { shape, edge } of hits) {
-    const previous = paths.get(shape.id);
-    if (edge.edgeIndex !== undefined && edge.t !== undefined) {
-      const continueSameEdge = previous?.activePath && previous.edgeIndex === edge.edgeIndex;
-      s.addPolygonEdgeGap(shape.id, edge.edgeIndex, edge.t, continueSameEdge ? previous.lastT : undefined);
-      paths.set(shape.id, { activePath: true, edgeIndex: edge.edgeIndex, lastT: edge.t });
-    } else {
-      s.addErasurePoint(shape.id, edge.point, !previous?.activePath);
-      paths.set(shape.id, { activePath: true });
-    }
-  }
-}
+import type { XY } from '../../types/map';
+import { beginEraser, finishBoundaryEraser, moveEraser } from './handlers/eraser';
+import { handlePointTool, nearestPolygonEdge, POINT_HIT_PX } from './handlers/point';
+import { beginSelectTool, selectHoverTargetAt, selectionBoxIntersects, updateSelectDrag } from './handlers/select';
+import { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from './handlers/shapeDrawing';
+import type { Drag } from './interactionTypes';
 
 /**
  * Pointer interactions for the map sheet: drawing, selecting, moving, vertex editing, panning and zooming.
@@ -328,153 +74,12 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         drag = { mode: 'detach-area', start: p, end: p };
         return;
       } else if (s.tool === 'eraser') {
-        if (!e.ctrlKey && s.eraserMode === 'area') {
-          const areaDrag: Extract<Drag, { mode: 'erase-area' }> = { mode: 'erase-area', last: p, active: new Map(), checkpointed: false };
-          eraseAreaAlongPath(s, p, p, areaDrag);
-          drag = areaDrag;
-          return;
-        }
-        const onlyPolygon = !e.ctrlKey && s.eraserMode === 'edges';
-        const hits = boundaryHits(s.doc.shapes, p, s.view.scale, onlyPolygon);
-        const paths = new Map<string, { activePath: boolean; edgeIndex?: number; lastT?: number }>();
-        if (hits.length) {
-          s.select(hits[0].shape.id);
-          s.checkpoint();
-          eraseBoundaryHits(s, hits, paths);
-          drag = { mode: 'erase-boundaries', onlyPolygon, paths };
-        }
+        drag = beginEraser(s, p, e.ctrlKey);
       } else if (s.tool === 'point') {
-        const edge = nearestPolygonEdge(s.doc.shapes, p);
-        if (edge && edge.distance * s.view.scale <= POINT_HIT_PX) {
-          const start = edge.shape.pts[edge.edgeIndex];
-          const end = edge.shape.pts[(edge.edgeIndex + 1) % edge.shape.pts.length];
-          const nearEndpoint = Math.min(
-            Math.hypot(p.x - start[0], p.y - start[1]),
-            Math.hypot(p.x - end[0], p.y - end[1]),
-          ) * s.view.scale <= 4;
-          if (nearEndpoint) {
-            s.select(edge.shape.id);
-            s.showToast('That is already an existing vertex. Click along the edge to add another point.');
-          } else {
-            s.addPolygonVertex(edge.shape.id, edge.edgeIndex, edge.t, edge.point);
-          }
-        }
+        handlePointTool(s, s.doc.shapes, p);
       } else if (s.tool === 'select') {
-        const selected = findShape(s.doc.shapes, s.selectedId);
-        if (selected && (selected.type === 'poly' || selected.type === 'rect' || selected.type === 'line' || selected.type === 'curve')) {
-          const [handleX, handleY] = rotationHandlePoint(selected.pts, s.view.scale);
-          if (Math.hypot(p.x - handleX, p.y - handleY) * s.view.scale <= 12) {
-            const center = pointsCenter(selected.pts);
-            s.checkpoint();
-            drag = { mode: 'rotate', id: selected.id, center, startAngle: Math.atan2(p.y - center[1], p.x - center[0]), original: selected };
-            host.style.cursor = 'grabbing';
-            return;
-          }
-        }
-        const selectedShapes = s.selectedId
-          ? [findShape(s.doc.shapes, s.selectedId)]
-          : s.marqueeSelection.map((id) => findShape(s.doc.shapes, id)).reverse();
-        const vertexCandidates = [
-          ...selectedShapes,
-          ...s.doc.shapes.slice().reverse().filter((shape) => !selectedShapes.some((selected) => selected?.id === shape.id)),
-        ];
-        for (const sel of vertexCandidates) {
-          if (!sel || sel.hidden || sel.type === 'label') continue;
-          const vi = hitVertex(sel, p, s.view.scale);
-          if (vi >= 0) {
-            if (e.shiftKey) {
-              if (sel.type !== 'rect' && vi < sel.pts.length && sel.pts.length > 3) {
-                s.act((doc) => mapShape(doc, sel.id, (o) => ({ ...o, pts: o.pts.filter((_, i) => i !== vi) })));
-                return;
-              }
-              if (vi >= sel.pts.length && (sel.type === 'poly' || sel.type === 'rect')) {
-                let holeIndex = vi - sel.pts.length;
-                const ringIndex = (sel.holes ?? []).findIndex((ring) => {
-                  if (holeIndex < ring.length) return true;
-                  holeIndex -= ring.length;
-                  return false;
-                });
-                if (ringIndex >= 0 && (sel.holes?.[ringIndex]?.length ?? 0) > 3) {
-                  const indexInRing = holeIndex;
-                  s.act((doc) => mapShape(doc, sel.id, (o) => o.type === 'poly' || o.type === 'rect'
-                    ? { ...o, holes: o.holes?.map((ring, i) => i === ringIndex ? ring.filter((_, vertexIndex) => vertexIndex !== indexInRing) : ring) }
-                    : o));
-                  return;
-                }
-              }
-            }
-            s.select(sel.id);
-            s.checkpoint();
-            drag = { mode: 'vertex', id: sel.id, index: vi, free: e.altKey };
-            return;
-          }
-        }
-        const hit = hitTest(s.doc.shapes, p, s.view.scale);
-        if (hit) {
-          s.select(hit.id);
-          if (hit.type !== 'label') {
-            let edgeIndex: number | null = null;
-            let distance = Infinity;
-            if (hit.type === 'circle') {
-              distance = Math.abs(Math.hypot(p.x - hit.pts[0][0], p.y - hit.pts[0][1]) - circleRadius(hit.pts));
-              if (distance * s.view.scale <= HIT_PX) edgeIndex = 0;
-            } else {
-              const edge = nearestPathEdge(hit.pts, p, hit.type === 'poly' || hit.type === 'rect');
-              if (edge) {
-                distance = edge.d;
-                if (distance * s.view.scale <= HIT_PX) edgeIndex = hit.type === 'line' || hit.type === 'curve' ? 0 : edge.i;
-              }
-            }
-            if (edgeIndex !== null) s.selectEdge(edgeIndex);
-          }
-          s.checkpoint();
-          const members = hit.groupId ? s.doc.shapes.filter((shape) => shape.groupId === hit.groupId) : [hit];
-          drag = { mode: 'move', start: p, members: members.map((shape) => ({
-            id: shape.id,
-            pts: shape.pts.map((q) => [q[0], q[1]] as Point),
-            holes: shape.holes?.map((ring) => ring.map(([x, y]) => [x, y] as Point)),
-            erasures: shape.erasures?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
-            cutouts: shape.cutouts?.map((stroke) => stroke.map(([x, y]) => [x, y] as Point)),
-          })) };
-        } else {
-          s.select(null);
-        }
-      } else if (s.tool === 'rect') {
-        s.setDraft({ type: 'rect', a: sp, b: sp });
-      } else if (s.tool === 'circle') {
-        s.setDraft({ type: 'circle', center: sp, edge: sp });
-      } else if (s.tool === 'line') {
-        s.setDraft({ type: 'line', a: sp, b: sp });
-      } else if (s.tool === 'curve') {
-        // Curves follow the pointer directly; grid snapping creates visible stair steps.
-        s.setDraft({ type: 'curve', pts: [[p.x, p.y]] });
-      } else if (s.tool === 'poly') {
-        const d = s.draft;
-        if (!d || d.type !== 'poly') {
-          s.setDraft({ type: 'poly', pts: [[sp.x, sp.y]] });
-          return;
-        }
-        const first = d.pts[0];
-        const last = d.pts[d.pts.length - 1];
-        const nearFirst = d.pts.length >= 3 && Math.hypot(p.x - first[0], p.y - first[1]) * s.view.scale <= HIT_PX;
-        const same = Math.abs(sp.x - last[0]) < 1e-6 && Math.abs(sp.y - last[1]) < 1e-6;
-        if (nearFirst || (same && d.pts.length >= 3)) {
-          s.finishPolygon();
-          return;
-        }
-        if (!same) s.setDraft({ type: 'poly', pts: [...d.pts, [sp.x, sp.y]] });
-      } else if (s.tool === 'label') {
-        s.addShape({ id: createId(), type: 'label', pts: [[sp.x, sp.y]], text: 'Label', size: 12, tone: 'light' });
-        s.setTool('select');
-        // Wait for the properties panel to render the new label's text field, then focus it.
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            const input = document.getElementById('label-text') as HTMLInputElement | null;
-            input?.focus();
-            input?.select();
-          }),
-        );
-      }
+        drag = beginSelectTool(s, p, e, host);
+      } else if (beginShapeDrawing(s, s.tool, p, sp)) return;
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -493,92 +98,15 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         drag = { ...drag, end: p };
         s.setSelectionBox({ a: [drag.start.x, drag.start.y], b: [p.x, p.y] });
       } else if (drag?.mode === 'erase-area') {
-        const d = drag;
-        eraseAreaAlongPath(s, d.last, p, d);
-        d.last = p;
+        moveEraser(s, p, drag);
       } else if (drag?.mode === 'erase-boundaries') {
-        const hits = boundaryHits(s.doc.shapes, p, s.view.scale, drag.onlyPolygon);
-        eraseBoundaryHits(s, hits, drag.paths);
-      } else if (drag?.mode === 'move') {
-        const d = drag;
-        const f = d.members.find((member) => member.id === s.selectedId)?.pts[0] ?? d.members[0]?.pts[0];
-        if (!f) return;
-        const rx = p.x - d.start.x;
-        const ry = p.y - d.start.y;
-        const o = snapOpts();
-        const dx = o.snap && !o.alt ? snapValue(f[0] + rx, o) - f[0] : Math.round(rx * 10) / 10;
-        const dy = o.snap && !o.alt ? snapValue(f[1] + ry, o) - f[1] : Math.round(ry * 10) / 10;
-        const originals = new Map(d.members.map((member) => [member.id, member]));
-        s.liveEdit((doc) => ({ ...doc, shapes: doc.shapes.map((shape) => {
-          const original = originals.get(shape.id);
-          return original ? {
-            ...shape,
-            pts: original.pts.map(([x, y]) => [x + dx, y + dy] as Point),
-            ...(original.holes ? { holes: original.holes.map((ring) => ring.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
-            ...(original.erasures ? { erasures: original.erasures.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
-            ...(original.cutouts ? { cutouts: original.cutouts.map((stroke) => stroke.map(([x, y]) => [x + dx, y + dy] as Point)) } : {}),
-          } : shape;
-        }) }));
-      } else if (drag?.mode === 'rotate') {
-        const d = drag;
-        let angle = Math.atan2(p.y - d.center[1], p.x - d.center[0]) - d.startAngle;
-        if (angle > Math.PI) angle -= Math.PI * 2;
-        if (angle < -Math.PI) angle += Math.PI * 2;
-        s.liveEdit((doc) => mapShape(doc, d.id, (shape) => rotateShape(d.original, d.center, angle)));
-      } else if (drag?.mode === 'vertex') {
-        const d = drag;
-        s.liveEdit((doc) =>
-          mapShape(doc, d.id, (sh) => {
-            if (sh.type === 'circle' && d.free && d.index === 1) {
-              const polygon = circleAsPolygon(sh);
-              return { ...polygon, pts: polygon.pts.map((q, i) => i === d.index ? [sp.x, sp.y] as Point : q) };
-            }
-            if (sh.type === 'rect' && d.index < sh.pts.length) {
-              if (d.free) return { ...sh, type: 'poly', pts: sh.pts.map((q, i) => i === d.index ? [sp.x, sp.y] as Point : q) };
-              return { ...sh, pts: moveRectCorner(sh.pts, d.index, sp) };
-            }
-            if (d.index < sh.pts.length) return { ...sh, pts: sh.pts.map((q, i) => (i === d.index ? ([sp.x, sp.y] as Point) : q)) };
-            if (sh.type === 'poly' || sh.type === 'rect') {
-              let holeIndex = d.index - sh.pts.length;
-              const ringIndex = (sh.holes ?? []).findIndex((ring) => {
-                if (holeIndex < ring.length) return true;
-                holeIndex -= ring.length;
-                return false;
-              });
-              if (ringIndex >= 0) {
-                const indexInRing = holeIndex;
-                return { ...sh, holes: sh.holes?.map((ring, i) => i === ringIndex ? ring.map((q, vertexIndex) => vertexIndex === indexInRing ? [sp.x, sp.y] as Point : q) : ring) };
-              }
-            }
-            return sh;
-          }),
-        );
-      } else if (s.draft?.type === 'rect') {
-        s.setDraft({ type: 'rect', a: s.draft.a, b: sp });
-      } else if (s.draft?.type === 'circle') {
-        s.setDraft({ type: 'circle', center: s.draft.center, edge: sp });
-      } else if (s.draft?.type === 'line') {
-        s.setDraft({ type: 'line', a: s.draft.a, b: sp });
-      } else if (s.draft?.type === 'curve') {
-        const last = s.draft.pts[s.draft.pts.length - 1];
-        const dx = p.x - last[0];
-        const dy = p.y - last[1];
-        const distancePx = Math.hypot(dx, dy) * s.view.scale;
-        // Interpolate pointer events to keep the spline smooth even when events arrive sparsely.
-        const stepPx = 2;
-        if (distancePx >= stepPx) {
-          const segments = Math.ceil(distancePx / stepPx);
-          const additions: Point[] = [];
-          for (let i = 1; i <= segments; i++) {
-            const t = i / segments;
-            additions.push([last[0] + dx * t, last[1] + dy * t]);
-          }
-          s.setDraft({ type: 'curve', pts: [...s.draft.pts, ...additions] });
-        }
-      }
+        moveEraser(s, p, drag);
+      } else if (drag && (drag.mode === 'move' || drag.mode === 'rotate' || drag.mode === 'vertex')) {
+        updateSelectDrag(s, p, sp, drag, snapOpts(), snapValue);
+      } else if (moveShapeDraft(s, p, sp)) { /* drawing handler owns draft updates */ }
 
       if (s.tool === 'select' && !drag) {
-        const target = hoverTargetAt(s.doc.shapes, p, s.view.scale, s.selectedId);
+        const target = selectHoverTargetAt(s.doc.shapes, p, s.view.scale, s.selectedId);
         s.setHoverTarget(target);
         host.style.cursor = target?.part === 'rotate' ? 'grab' : target?.part === 'vertex' ? 'pointer' : target ? 'move' : 'default';
       } else if (s.tool === 'point' && !drag) {
@@ -592,43 +120,7 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
 
     const endDrag = () => {
       const s = st();
-      if (s.draft?.type === 'rect') {
-        const { a, b } = s.draft;
-        s.setDraft(null);
-        if (Math.abs(b.x - a.x) >= 1 && Math.abs(b.y - a.y) >= 1) {
-          const shape = { id: createId(), type: 'rect' as const, kind: s.kind, pts: rectPts(a.x, a.y, b.x, b.y) };
-          if (s.kind === 'cut') s.cutoutArea(shape);
-          else s.addShape(shape);
-        }
-      }
-      if (s.draft?.type === 'circle') {
-        const { center, edge } = s.draft;
-        s.setDraft(null);
-        if (Math.hypot(edge.x - center.x, edge.y - center.y) >= 1) {
-          const shape = { id: createId(), type: 'circle' as const, kind: s.kind, pts: [[center.x, center.y], [edge.x, edge.y]] as Point[] };
-          if (s.kind === 'cut') s.cutoutArea(shape);
-          else s.addShape(shape);
-        }
-      }
-      if (s.draft?.type === 'line') {
-        const { a, b } = s.draft;
-        s.setDraft(null);
-        if (Math.hypot(b.x - a.x, b.y - a.y) >= 1) {
-          if (s.kind === 'cut') s.showToast('Cutout works with filled shapes: polygon, rectangle, or circle.');
-          else s.addShape({ id: createId(), type: 'line', kind: s.kind, pts: [[a.x, a.y], [b.x, b.y]] });
-        }
-      }
-      if (s.draft?.type === 'curve') {
-        const pts = s.draft.pts.slice();
-        const end = s.rawCursor;
-        const last = pts[pts.length - 1];
-        if (end && last && Math.hypot(end.x - last[0], end.y - last[1]) > 0.01) pts.push([end.x, end.y]);
-        s.setDraft(null);
-        if (pts.length >= 2) {
-          if (s.kind === 'cut') s.showToast('Cutout works with filled shapes: polygon, rectangle, or circle.');
-          else s.addShape({ id: createId(), type: 'curve', kind: s.kind, pts });
-        }
-      }
+      finishShapeDraft(s);
       if (drag) {
         const finishedDrag = drag;
         const wasPan = finishedDrag.mode === 'pan';
@@ -645,14 +137,14 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
           const { start, end } = finishedDrag;
           const ids = Math.hypot(end.x - start.x, end.y - start.y) < 0.5
             ? []
-            : s.doc.shapes.filter((shape) => shapeIntersectsBox(shape, start, end)).map((shape) => shape.id);
+            : s.doc.shapes.filter((shape) => selectionBoxIntersects(shape, start, end)).map((shape) => shape.id);
           s.setSelectionBox(null);
           s.setMarqueeSelection(ids);
           drag = null;
           return;
         }
         if (finishedDrag.mode === 'erase-boundaries') {
-          for (const id of finishedDrag.paths.keys()) s.finalizePolygonEdgeGaps(id);
+          finishBoundaryEraser(s, finishedDrag);
         }
         drag = null;
         if (wasPan || finishedDrag.mode === 'rotate') host.style.cursor = baseCursor();

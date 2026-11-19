@@ -179,3 +179,12 @@ src/
 - Verification: all 15 `npm test` cases passed. TypeScript checking passed with a temporary resolver configuration pointing to the original worktree dependencies. Vite's production build completed from this worktree; it reports the existing large-chunk advisory.
 - No intentional behavior change. Manual desktop interaction review remains useful because the automated suite exercises handler logic but not real browser pointer capture or Konva event timing.
 - Step 3 is complete. Stop here and wait for explicit `continue` before Step 4.
+
+## Step 4 public API and boundary notes
+
+- Added public entry points at `src/features/drawing/index.ts` and `src/features/projects/index.ts`, and migrated app/components/hooks to import those APIs instead of feature internals.
+- Added `scripts/check-import-boundaries.mjs`, `import-boundaries.json`, and the `npm run check:boundaries` command. The checker parses TypeScript imports and rejects imports into another feature's private files; a temporary direct import probe was correctly rejected.
+- The single documented exception is `src/stores/editorStore.ts` importing `src/features/projects/sampleProject.ts` for the current empty-document initializer. Importing through the projects barrel would load project I/O, which currently imports the store. Remove this exception when Step 2 creates the store composition boundary.
+- Verification: boundary check passes, all 15 characterization tests pass, typecheck passes, and Vite production build passes with the existing large-chunk advisory.
+- Step 2 store extraction remains pending because Step 3 was explicitly requested before it. No feature behavior was intentionally changed.
+- Step 4 is complete. Stop here and wait for explicit `continue` before Step 5.

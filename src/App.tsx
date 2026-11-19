@@ -6,7 +6,7 @@ import { MapCanvas } from './components/MapCanvas';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { StatusBar } from './components/StatusBar';
 import { ToolRail } from './components/ToolRail';
-import { sampleDocument } from './features/projects/sampleProject';
+import { sampleDocument } from './features/projects';
 import { useAutosave } from './hooks/useAutosave';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { loadAutosave, saveTheme } from './lib/storage';

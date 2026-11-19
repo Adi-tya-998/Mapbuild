@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { FilePlus, FolderOpen, ImageDown, Map as MapIcon, Maximize, Minus, Monitor, Moon, Plus, Redo2, Save, Sun, Undo2 } from 'lucide-react';
-import { openProjectFile, saveProjectFile } from '../features/projects/projectIO';
+import { openProjectFile, saveProjectFile } from '../features/projects';
 import { fitTransform } from '../lib/geometry';
 import { useEditorHistory } from '../hooks/useEditorHistory';
 import { useEditorStore } from '../stores/editorStore';

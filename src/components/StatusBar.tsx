@@ -1,4 +1,4 @@
-import { TOOLS } from '../features/drawing/tools';
+import { TOOLS } from '../features/drawing';
 import { useEditorStore } from '../stores/editorStore';
 
 export function StatusBar() {

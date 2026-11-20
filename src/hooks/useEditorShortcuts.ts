@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { TOOL_BY_KEY } from '../features/drawing/tools';
+import { TOOL_BY_KEY } from '../features/drawing';
 import { useEditorStore } from '../stores/editorStore';
 import { isTypingTarget } from './useEditorHistory';
 

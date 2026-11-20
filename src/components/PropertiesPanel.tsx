@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { ArrowDown, ArrowUp, Copy, ImagePlus, Trash2 } from 'lucide-react';
-import { importBackgroundImage } from '../features/projects/projectIO';
+import { importBackgroundImage } from '../features/projects';
 import { sizeOf } from '../lib/geometry';
 import { findShape, useEditorStore } from '../stores/editorStore';
 import { DEFAULT_OUTLINE_WIDTH, LABEL_LIMITS, OUTLINE_WIDTH_PRESETS, SURFACES, SURFACE_KINDS } from '../types/map';

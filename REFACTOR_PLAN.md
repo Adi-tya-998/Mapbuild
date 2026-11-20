@@ -196,3 +196,12 @@ src/
 - The single documented exception is `src/stores/editorStore.ts` importing `src/features/projects/sampleProject.ts` for the empty-document initializer. Importing through the projects barrel would load project I/O, which currently imports the store; the public store facade remains in `stores/` after Step 2, so this exception remains documented.
 - Verification after Step 2: boundary check passes, all 16 characterization tests pass, typecheck passes, and Vite production build passes with the existing large-chunk advisory.
 - Step 4 is complete. Step 5 (docs) is next; wait for explicit `continue` before starting it.
+
+## Step 5 documentation notes
+
+- Added `AGENTS.md` with feature ownership, store/data conventions, import boundary rules, and local branch workflow.
+- Added `FEATURES.md` as a user-facing inventory of current drawing, editing, layer, project, and export capabilities, including features that are intentionally not implemented yet.
+- Added `TASK_TEMPLATE.md` for capturing scope, behavior that must stay unchanged, acceptance checks, verification, and branch/delivery choices.
+- Added `BUGS_FOUND.md` to distinguish confirmed defects (none found in the characterization suite) from known limitations and manual verification gaps.
+- Updated README commands, architecture map, and tests/limitations section to reflect the current refactor.
+- Documentation-only change; no product behavior changed. The latest code verification from Step 2 passed all 16 characterization tests, boundary checks, TypeScript checking, and the production build. Step 6 final verification is next and requires explicit `continue`.

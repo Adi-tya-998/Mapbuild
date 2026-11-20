@@ -1,15 +1,17 @@
-# Minimap Maker (valoplant-editor)
+# Mapbuild (Minimap Maker)
 
-A browser-based minimap editor: draw floors, lanes, sites and cutouts on a square 360-unit sheet, label them, and export a PNG or JSON. Frontend only: no backend, accounts or cloud. Everything is stored in your browser.
+A browser-based tactical map editor: draw floors, lanes, sites and cutouts on a square 360-unit sheet, label them, and export PNG or JSON. This rebuild is frontend-only and local-first; it does not have a backend, accounts, or cloud saves.
 
 Stack: React, TypeScript, Vite, Konva + React Konva, Zustand, Zod, Lucide.
 
 ## Run
 
 ```bash
-npm install
+npm ci
 npm run dev        # http://localhost:5173
 npm run build      # typecheck + production build into dist/
+npm test           # behavior characterization suite
+npm run check:boundaries
 npm run preview    # serve the production build
 ```
 
@@ -41,12 +43,16 @@ The project autosaves a moment after every change and is restored on reload.
 src/
   components/     Toolbar, tool rail, canvas, layers + properties panels, export dialog, status bar, toast
   features/
-    drawing/      Konva nodes, pointer interactions (draw/select/move/vertex/zoom/pan), tool definitions
-    projects/     Open/save/import helpers and the example map
-  hooks/          useEditorHistory (undo/redo), useAutosave, useEditorShortcuts
-  stores/         editorStore.ts: document + transient UI state + history (Zustand)
-  lib/            geometry, validation (Zod), storage (IndexedDB), exportPng, image, download
-  types/          map.ts (objects), project.ts (document + file format)
+    drawing/      Public drawing API, Konva rendering, pointer lifecycle, tool handlers and tool definitions
+    projects/     Public project API, JSON open/save, image import and sample document
+  state/
+    slices/       Zustand document/history, selection, drawing, canvas, layer, property and UI action slices
+    editorStoreHelpers.ts shared pure document/geometry helpers
+  stores/         editorStore.ts: stable public Zustand store contract and slice composition
+  hooks/          useEditorHistory, useAutosave and useEditorShortcuts
+  lib/            geometry, validation (Zod), browser storage, PNG export, image and download helpers
+  types/          map objects/tools and project document/file types
+  tests/          project, geometry, store, handler, eraser/cutout/detach and PNG characterization
 ```
 
 Persistent data (`doc`: name, shapes, background) is kept apart from transient state (selection, tool, draft, view) in the store. All coordinates are in map units, so zooming, panning or resizing the window never changes the data.
@@ -62,4 +68,6 @@ JSON with `app: "minimap-maker"`, `version: 2`, `name`, `size: 360`, `shapes[]` 
 - PNG export uses a dedicated canvas painter (ported from the original), so label text can differ from the on-screen view by a fraction of a unit.
 - Fonts (IBM Plex, Barlow Condensed) load from Google Fonts; offline, system fonts are used.
 - Exported JSON includes the background image, so files with a background can be large.
-- No automated tests are included yet.
+- Real browser pointer capture, modifier-key timing, and visual rendering still need manual testing; the Node suite characterizes logic but does not replace browser interaction checks.
+
+See [FEATURES.md](FEATURES.md) for the current feature guide, [AGENTS.md](AGENTS.md) for architecture and contribution guidance, and [BUGS_FOUND.md](BUGS_FOUND.md) for known limitations and testing gaps. Use [TASK_TEMPLATE.md](TASK_TEMPLATE.md) when preparing a feature or fix request.

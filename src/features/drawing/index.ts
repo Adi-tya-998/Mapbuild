@@ -1,3 +1,4 @@
-export { BackgroundImage, EditorOverlay, GridLines, SheetShapes } from './CanvasNodes';
 export { TOOLS, TOOL_BY_KEY } from './tools';
-export { useCanvasInteractions } from './useCanvasInteractions';
+export { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from './handlers/shapeDrawing';
+// Compatibility facade for existing app imports; feature-specific code should use canvas/index.ts.
+export { BackgroundImage, EditorOverlay, GridLines, SheetShapes, useCanvasInteractions } from '../canvas';

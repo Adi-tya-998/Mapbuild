@@ -3,7 +3,7 @@ import { findShape, mapShape } from '../../../stores/editorStore';
 import type { EditorState, HoverTarget } from '../../../stores/editorStore';
 import { DEFAULT_OUTLINE_WIDTH } from '../../../types/map';
 import type { MapObject, Point, XY } from '../../../types/map';
-import type { Drag } from '../interactionTypes';
+import type { Drag } from '../../canvas';
 
 function circleAsPolygon(shape: Extract<MapObject, { type: 'circle' }>): Extract<MapObject, { type: 'poly' }> {
   const [cx, cy] = shape.pts[0];

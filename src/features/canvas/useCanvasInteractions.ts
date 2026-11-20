@@ -3,10 +3,9 @@ import type { RefObject } from 'react';
 import { nearestEdge, snapValue, HIT_PX } from '../../lib/geometry';
 import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
 import type { XY } from '../../types/map';
-import { beginEraser, finishBoundaryEraser, moveEraser } from './handlers/eraser';
-import { handlePointTool, nearestPolygonEdge, POINT_HIT_PX } from './handlers/point';
-import { beginSelectTool, selectHoverTargetAt, selectionBoxIntersects, updateSelectDrag } from './handlers/select';
-import { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from './handlers/shapeDrawing';
+import { beginEraser, finishBoundaryEraser, moveEraser } from '../eraser';
+import { handlePointTool, nearestPolygonEdge, POINT_HIT_PX, beginSelectTool, selectHoverTargetAt, selectionBoxIntersects, updateSelectDrag } from '../selection';
+import { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from '../drawing';
 import type { Drag } from './interactionTypes';
 
 /**

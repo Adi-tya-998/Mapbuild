@@ -205,3 +205,10 @@ src/
 - Added `BUGS_FOUND.md` to distinguish confirmed defects (none found in the characterization suite) from known limitations and manual verification gaps.
 - Updated README commands, architecture map, and tests/limitations section to reflect the current refactor.
 - Documentation-only change; no product behavior changed. The latest code verification from Step 2 passed all 16 characterization tests, boundary checks, TypeScript checking, and the production build. Step 6 final verification is next and requires explicit `continue`.
+
+## Step 6 final verification notes
+
+- Final verification on `experiment/feature-boundaries`: 16/16 characterization tests passed, `npm run check:boundaries` passed, TypeScript checking passed, and the Vite production build completed. The build retains the non-failing large-chunk warning and CJS Vite API deprecation notice.
+- The original main project remains in its own clean worktree at `C:/Users/adity/Documents/Codex/2026-10-17/ca/minimapmaker`; all refactor source and build output are confined to `minimapmaker-refactor`.
+- Desktop pointer, visual, and responsive behavior has not been manually verified in a browser. Use the manual checklist in the Step 6 handoff before treating interaction behavior as user-approved.
+- No automated verification failures remain. Step 6 is complete, subject to user-run visual/manual checks.

@@ -178,13 +178,21 @@ src/
 - The selection handler owns hit testing and shape movement/rotation/vertex edits; drawing handlers own tool draft start/move/finalization; eraser handlers own area and edge hit behavior; the point handler owns polygon edge insertion. Behavior was moved from the previous hook implementation, with regression cases added for the extracted paths.
 - Verification: all 15 `npm test` cases passed. TypeScript checking passed with a temporary resolver configuration pointing to the original worktree dependencies. Vite's production build completed from this worktree; it reports the existing large-chunk advisory.
 - No intentional behavior change. Manual desktop interaction review remains useful because the automated suite exercises handler logic but not real browser pointer capture or Konva event timing.
-- Step 3 is complete. Stop here and wait for explicit `continue` before Step 4.
+- Step 3 was completed ahead of Step 2 at the user's direction; proceed with Step 2 before the documentation step.
+
+## Step 2 store-slice notes
+
+- Extracted shared document/geometry helpers into `src/state/editorStoreHelpers.ts` and composed seven typed Zustand slices for document/history, selection, drawing/eraser, canvas/view, layers/groups, properties/background, and UI state.
+- Kept `useEditorStore`, `EditorState`, and the existing action names available through `src/stores/editorStore.ts`; existing components and hooks continue using the same selectors and actions.
+- Moved the existing action bodies verbatim into their slice modules. The wiring passes Zustand's store API to each slice creator; cross-slice calls still use the same `get()` actions.
+- Added a public action-contract characterization. Verification: all 16 characterization cases passed, TypeScript check passed using the existing project dependency install, and the Vite production build completed. The existing large JavaScript chunk advisory remains. No intentional behavior change; pointer behavior remains covered by the extracted handler characterization tests, while visual browser checks remain manual.
+- Step 2 is complete. Step 5 (documentation) is next and still requires explicit `continue`.
+- Step 3 was completed ahead of Step 2 as requested; its handler split remains covered by characterization checks.
 
 ## Step 4 public API and boundary notes
 
 - Added public entry points at `src/features/drawing/index.ts` and `src/features/projects/index.ts`, and migrated app/components/hooks to import those APIs instead of feature internals.
 - Added `scripts/check-import-boundaries.mjs`, `import-boundaries.json`, and the `npm run check:boundaries` command. The checker parses TypeScript imports and rejects imports into another feature's private files; a temporary direct import probe was correctly rejected.
-- The single documented exception is `src/stores/editorStore.ts` importing `src/features/projects/sampleProject.ts` for the current empty-document initializer. Importing through the projects barrel would load project I/O, which currently imports the store. Remove this exception when Step 2 creates the store composition boundary.
-- Verification: boundary check passes, all 15 characterization tests pass, typecheck passes, and Vite production build passes with the existing large-chunk advisory.
-- Step 2 store extraction remains pending because Step 3 was explicitly requested before it. No feature behavior was intentionally changed.
-- Step 4 is complete. Stop here and wait for explicit `continue` before Step 5.
+- The single documented exception is `src/stores/editorStore.ts` importing `src/features/projects/sampleProject.ts` for the empty-document initializer. Importing through the projects barrel would load project I/O, which currently imports the store; the public store facade remains in `stores/` after Step 2, so this exception remains documented.
+- Verification after Step 2: boundary check passes, all 16 characterization tests pass, typecheck passes, and Vite production build passes with the existing large-chunk advisory.
+- Step 4 is complete. Step 5 (docs) is next; wait for explicit `continue` before starting it.

@@ -43,6 +43,16 @@ function resetStore(shapes = []) {
   useEditorStore.getState().hydrate({ name: 'Test map', shapes, background: null });
 }
 
+test('store composition keeps the public actions available across feature slices', () => {
+  const state = useEditorStore.getState();
+  const actions = [
+    'hydrate', 'undo', 'redo', 'act', 'addShape', 'cutoutArea', 'select', 'detachPolygonsInBox',
+    'setTool', 'finishPolygon', 'addErasurePoint', 'setViewport', 'zoomAt', 'groupSelectedLayers',
+    'renameLayer', 'patchElevation', 'setSelectedOutline', 'showToast', 'toggleGrid',
+  ];
+  for (const action of actions) assert.equal(typeof state[action], 'function', `${action} remains public`);
+});
+
 test('project JSON preserves editable shape fields and rejects malformed input', () => {
   const doc = {
     name: 'Round trip',

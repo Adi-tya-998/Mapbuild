@@ -23,8 +23,8 @@ const validation = require('../src/lib/validation.ts');
 const storeModule = require('../src/stores/editorStore.ts');
 const exportModule = require('../src/lib/exportPng.ts');
 const eraserHandlers = require('../src/features/eraser/index.ts');
-const pointHandlers = require('../src/features/selection/index.ts');
-const selectHandlers = require('../src/features/selection/index.ts');
+const pointHandlers = require('../src/features/selection/handlers/point.ts');
+const selectHandlers = require('../src/features/selection/handlers/select.ts');
 const drawingHandlers = require('../src/features/drawing/handlers/shapeDrawing.ts');
 
 const { rectPts, snapValue, pointInPolygon } = geometry;

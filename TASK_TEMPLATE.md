@@ -16,6 +16,10 @@ Describe the result and important edge cases.
 - Data format, migration, or export impact:
 - Explicitly out of scope:
 
+## Edit boundary
+
+You may edit ONLY `src/features/<name>/**` (and its tests). Do not modify any other directory. If another change is needed, stop and tell me.
+
 ## Acceptance checks
 - [ ] User-visible behavior matches the expected behavior.
 - [ ] Existing selection, layer order, undo/redo, and file behavior remain correct where applicable.

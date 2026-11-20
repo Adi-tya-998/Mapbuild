@@ -4,6 +4,10 @@
 
 Mapbuild is a local-first React + TypeScript editor for tactical 2D maps. Keep edits in the feature that owns the behavior, preserve the map JSON contract, and avoid adding server, account, or cloud behavior unless a task explicitly asks for it.
 
+## Edit boundary
+
+Only edit files inside the feature named in the task. Do not touch other features, shared code, or store composition unless the task explicitly allows it. If a change seems to need another feature, STOP and report what is needed.
+
 ## Architecture and ownership
 
 - `src/components/`: application composition and UI panels. Keep interaction rules in their owning feature or store slice rather than adding domain logic to a component.

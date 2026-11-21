@@ -1,7 +1,7 @@
-import { ERASER_WIDTH, SHEET_SIZE, SURFACES } from '../types/map';
-import type { EdgeGap, LabelObject, MapObject, Point } from '../types/map';
-import type { MapDocument } from '../types/project';
-import { circleRadius, LABEL_FONT } from './geometry';
+import { ERASER_WIDTH, SHEET_SIZE, SURFACES } from '../../types/map';
+import type { EdgeGap, LabelObject, MapObject, Point } from '../../types/map';
+import type { MapDocument } from '../../types/project';
+import { circleRadius, LABEL_FONT } from '../../lib/geometry';
 
 function tracePath(c: CanvasRenderingContext2D, pts: MapObject['pts']) {
   c.beginPath();

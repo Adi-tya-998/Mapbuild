@@ -21,7 +21,7 @@ require.extensions['.ts'] = (module, filename) => {
 const geometry = require('../src/lib/geometry.ts');
 const validation = require('../src/lib/validation.ts');
 const storeModule = require('../src/stores/editorStore.ts');
-const exportModule = require('../src/lib/exportPng.ts');
+const exportModule = require('../src/features/export/exportPng.ts');
 const eraserHandlers = require('../src/features/eraser/index.ts');
 const pointHandlers = require('../src/features/selection/handlers/point.ts');
 const selectHandlers = require('../src/features/selection/handlers/select.ts');

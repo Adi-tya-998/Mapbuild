@@ -21,12 +21,6 @@ const loadTypeScript = (jsx) => (module, filename) => {
 require.extensions['.ts'] = loadTypeScript(false);
 require.extensions['.tsx'] = loadTypeScript(true);
 
-// The store's feature index also exposes Konva UI. The characterization tests
-// exercise store/handler behavior only, so stub rendering primitives in Node.
-const reactKonvaPath = require.resolve('react-konva');
-const konvaStub = new Proxy({}, { get: () => function KonvaPrimitive() { return null; } });
-require.cache[reactKonvaPath] = { id: reactKonvaPath, filename: reactKonvaPath, loaded: true, exports: konvaStub };
-
 const geometry = require('../src/lib/geometry.ts');
 const validation = require('../src/lib/validation.ts');
 const storeModule = require('../src/stores/editorStore.ts');

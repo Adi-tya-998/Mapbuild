@@ -74,6 +74,14 @@ for (const file of sourceFiles(sourceRoot)) {
 
     if (!toFeature || isFeatureEntry(target) || fromFeature === toFeature) continue;
 
+    // Store composition intentionally consumes feature slice modules directly. Importing a
+    // feature barrel here can load UI/project modules that import the store back and create a
+    // runtime initialization cycle.
+    const isStoreComposer = sourcePath(file) === 'src/stores/editorStore.ts';
+    const isStoreSlice = /[\\/]storeSlice\.ts$/.test(target);
+    const isCanvasConstant = sourcePath(target) === 'src/features/canvas/constants.ts';
+    if (isStoreComposer && (isStoreSlice || isCanvasConstant)) continue;
+
     const pair = `${sourcePath(file)} -> ${sourcePath(target)}`;
     if (!allowed.has(pair)) violations.push(`${pair} (import through src/features/${toFeature}/index.ts)`);
   }
@@ -84,4 +92,4 @@ assert.equal(
   0,
   `${violations.length} feature boundary violation(s):\n${violations.map((violation) => `- ${violation}`).join('\n')}`,
 );
-process.stdout.write(`Feature import boundaries passed (${allowed.size} documented exception).\n`);
+process.stdout.write(`Feature import boundaries passed (${allowed.size} configured cross-feature exceptions).\n`);

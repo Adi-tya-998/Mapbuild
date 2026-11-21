@@ -1,19 +1,19 @@
 import { create } from 'zustand';
 import type { EditorState } from '../state/editorStoreTypes';
 export type { EditorState, HoverTarget, ViewState, Viewport, LabelPatch } from '../state/editorStoreTypes';
-import { createDocumentSlice } from '../features/projects';
-import { createSelectionSlice } from '../features/selection';
-import { createDrawingSlice } from '../features/drawing';
-import { createEraserSlice } from '../features/eraser';
-import { createCanvasSlice } from '../features/canvas';
-import { createLayersSlice } from '../features/layers';
-import { createPropertiesSlice } from '../features/properties';
-import { createUiSlice } from '../shared';
+import { createDocumentSlice } from '../features/projects/storeSlice';
+import { createSelectionSlice } from '../features/selection/storeSlice';
+import { createDrawingSlice } from '../features/drawing/storeSlice';
+import { createEraserSlice } from '../features/eraser/storeSlice';
+import { createCanvasSlice } from '../features/canvas/storeSlice';
+import { createLayersSlice } from '../features/layers/storeSlice';
+import { createPropertiesSlice } from '../features/properties/storeSlice';
+import { createUiSlice } from '../shared/storeSlice';
 import { fitTransform } from '../lib/geometry';
 import { emptyDocument } from '../lib/emptyDocument';
 import { loadTheme } from '../lib/storage';
 
-export { MIN_SCALE, MAX_SCALE } from '../features/canvas';
+export { MIN_SCALE, MAX_SCALE } from '../features/canvas/constants';
 
 export { findShape, mapShape, snapshot, closedRing, geometryShapes, filledGeometry, subtractCutout, bakeLegacyCutoutLayers, sameContent } from '../state/editorStoreHelpers';
 

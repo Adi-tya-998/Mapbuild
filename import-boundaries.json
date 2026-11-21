@@ -1,4 +1,4 @@
 {
-  "description": "Application and feature code must import feature APIs through the owning feature's index.ts. Feature internals may import within their own feature; cross-feature imports must use the other feature's index.ts.",
+  "description": "Feature-to-feature imports must use the owning feature's index.ts. The central editorStore.ts composer may import a feature's storeSlice.ts directly to avoid runtime barrel cycles. Shared code must not import features, and features must not import app modules.",
   "allowedInternalImports": []
 }

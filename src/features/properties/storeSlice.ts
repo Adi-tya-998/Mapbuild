@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
-import { mapShape } from '../editorStoreHelpers';
+import type { EditorState } from '../../state/editorStoreTypes';
+import { mapShape } from '../../state/editorStoreHelpers';
 import { clamp } from '../../lib/geometry';
 
 type Slice = Pick<EditorState, 'patchLabel' | 'patchElevation' | 'setSelectedOutlineWidth' | 'setSelectedOutline' | 'setSelectedEdgeOutline' | 'setBackground' | 'patchBackground'>;

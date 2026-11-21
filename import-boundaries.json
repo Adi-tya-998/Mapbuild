@@ -1,10 +1,4 @@
 {
   "description": "Application and feature code must import feature APIs through the owning feature's index.ts. Feature internals may import within their own feature; cross-feature imports must use the other feature's index.ts.",
-  "allowedInternalImports": [
-    {
-      "from": "src/stores/editorStore.ts",
-      "to": "src/features/projects/sampleProject.ts",
-      "reason": "The current store initializer needs emptyDocument before the project store dependency is extracted in Step 2; importing projectIO through the projects index would create a store cycle. Remove this exception when the state composition boundary is introduced."
-    }
-  ]
+  "allowedInternalImports": []
 }

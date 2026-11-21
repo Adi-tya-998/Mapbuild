@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
-import { bakeLegacyCutoutLayers, filledGeometry, findShape, sameContent, snapshot, subtractCutout } from '../editorStoreHelpers';
+import type { EditorState } from '../../state/editorStoreTypes';
+import { bakeLegacyCutoutLayers, filledGeometry, findShape, sameContent, snapshot, subtractCutout } from '../../state/editorStoreHelpers';
 import { createId } from '../../lib/id';
 import type { MapObject } from '../../types/map';
 

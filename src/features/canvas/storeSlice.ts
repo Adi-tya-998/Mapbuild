@@ -1,9 +1,9 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
+import type { EditorState } from '../../state/editorStoreTypes';
 import { clamp, fitTransform } from '../../lib/geometry';
-import { MAX_SCALE, MIN_SCALE } from '../constants';
+import { MAX_SCALE, MIN_SCALE } from './constants';
 
-type Slice = Pick<EditorState, 'setViewport' | 'fitView' | 'zoomAt' | 'panBy'>;
+type Slice = Pick<EditorState, 'setViewport' | 'fitView' | 'zoomAt' | 'panBy' | 'toggleGrid' | 'toggleSnap' | 'setGridSize'>;
 export const createCanvasSlice: StateCreator<EditorState, [], [], Slice> = (set, get) => ({
   setViewport: (w, h) => {
     const s = get();
@@ -25,5 +25,8 @@ export const createCanvasSlice: StateCreator<EditorState, [], [], Slice> = (set,
     const uy = (py - view.y) / view.scale;
     set({ view: { scale, x: px - ux * scale, y: py - uy * scale }, autoFit: false });
   },
-  panBy: (dx, dy) => set((s) => ({ view: { ...s.view, x: s.view.x + dx, y: s.view.y + dy }, autoFit: false }))
+  panBy: (dx, dy) => set((s) => ({ view: { ...s.view, x: s.view.x + dx, y: s.view.y + dy }, autoFit: false })),
+  toggleGrid: () => set((s) => ({ grid: !s.grid })),
+  toggleSnap: () => set((s) => ({ snap: !s.snap })),
+  setGridSize: (gridSize) => set({ gridSize })
 });

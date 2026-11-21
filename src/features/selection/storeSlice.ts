@@ -1,8 +1,8 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
+import type { EditorState } from '../../state/editorStoreTypes';
 import polygonClipping from 'polygon-clipping';
 import type { MultiPolygon } from 'polygon-clipping';
-import { closedRing, findShape, geometryShapes, mapShape } from '../editorStoreHelpers';
+import { closedRing, findShape, geometryShapes, mapShape } from '../../state/editorStoreHelpers';
 import { createId } from '../../lib/id';
 import { SHEET_SIZE } from '../../types/map';
 import type { EdgeGap, MapObject, Point } from '../../types/map';

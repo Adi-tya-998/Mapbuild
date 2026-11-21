@@ -19,10 +19,6 @@ const L = (text: string, x: number, y: number, size: number): LabelObject => ({
   tone: 'light',
 });
 
-export function emptyDocument(name = 'Untitled map'): MapDocument {
-  return { name, shapes: [], background: null };
-}
-
 /** The example map shown on first launch (ported from the original editor). */
 export function sampleDocument(): MapDocument {
   const shapes: MapObject[] = [

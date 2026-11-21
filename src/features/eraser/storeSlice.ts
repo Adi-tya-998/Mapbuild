@@ -1,44 +1,13 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
-import { findShape, mapShape } from '../editorStoreHelpers';
+import type { EditorState } from '../../state/editorStoreTypes';
+import { findShape, mapShape } from '../../state/editorStoreHelpers';
 import { clamp } from '../../lib/geometry';
-import { createId } from '../../lib/id';
 import { DEFAULT_OUTLINE_WIDTH, ERASER_WIDTH } from '../../types/map';
 import type { EdgeGap, EdgeOutline, Outline, Point } from '../../types/map';
 
-type Slice = Pick<EditorState, 'setTool' | 'setKind' | 'setAlt' | 'setSpaceHeld' | 'setCursor' | 'setDraft' | 'setEraserMode' | 'finishPolygon' | 'addErasurePoint' | 'addCutoutPoints' | 'addPolygonEdgeGap' | 'finalizePolygonEdgeGaps'>;
-export const createDrawingSlice: StateCreator<EditorState, [], [], Slice> = (set, get) => ({
-  setTool: (tool) => set({ tool, draft: null, selectionBox: null, marqueeSelection: [], hoverTarget: null }),
-  setKind: (kind) => {
-    const s = get();
-    const sel = findShape(s.doc.shapes, s.selectedId);
-    set({ kind });
-    if (sel && s.tool === 'select') {
-      if (kind === 'cut' && (sel.type === 'poly' || sel.type === 'rect' || sel.type === 'circle')) {
-        s.cutoutArea(sel, sel.id);
-      } else if (kind !== 'cut' && sel.type !== 'label') {
-        s.act((doc) => mapShape(doc, sel.id, (o) => (o.type === 'label' ? o : { ...o, kind })));
-      }
-    }
-  },
-  setAlt: (altKey) => {
-    if (get().altKey !== altKey) set({ altKey });
-  },
-  setSpaceHeld: (spaceHeld) => {
-    if (get().spaceHeld !== spaceHeld) set({ spaceHeld });
-  },
-  setCursor: (cursor, rawCursor) => set({ cursor, rawCursor }),
-  setDraft: (draft) => set({ draft }),
+type Slice = Pick<EditorState, 'setEraserMode' | 'addErasurePoint' | 'addCutoutPoints' | 'addPolygonEdgeGap' | 'finalizePolygonEdgeGaps'>;
+export const createEraserSlice: StateCreator<EditorState, [], [], Slice> = (set, get) => ({
   setEraserMode: (eraserMode) => set({ eraserMode }),
-  finishPolygon: () => {
-    const { draft, kind } = get();
-    set({ draft: null });
-    if (draft?.type === 'poly' && draft.pts.length >= 3) {
-      const shape = { id: createId(), type: 'poly' as const, kind, pts: draft.pts };
-      if (kind === 'cut') get().cutoutArea(shape);
-      else get().addShape(shape);
-    }
-  },
   addErasurePoint: (id, point, startNewStroke) => {
     get().liveEdit((doc) => mapShape(doc, id, (o) => {
       const erasures = (o.erasures ?? []).map((stroke) => stroke.slice());

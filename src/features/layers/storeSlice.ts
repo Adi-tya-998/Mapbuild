@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
-import type { EditorState } from '../../stores/editorStore';
-import { mapShape } from '../editorStoreHelpers';
+import type { EditorState } from '../../state/editorStoreTypes';
+import { mapShape } from '../../state/editorStoreHelpers';
 import { createId } from '../../lib/id';
 
 type Slice = Pick<EditorState, 'toggleGroupingSelection' | 'groupSelectedLayers' | 'addLayerToGroup' | 'renameLayer' | 'renameGroup' | 'reorderGroup' | 'reorderLayer' | 'ungroupSelectedLayers' | 'toggleHidden'>;

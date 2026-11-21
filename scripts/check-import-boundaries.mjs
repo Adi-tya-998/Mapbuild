@@ -38,6 +38,15 @@ function featureOf(path) {
   return rel[0] === 'features' && rel.length > 1 ? rel[1] : null;
 }
 
+function isShared(path) {
+  return relative(sourceRoot, path).split(sep)[0] === 'shared';
+}
+
+function isAppModule(path) {
+  const rel = relative(sourceRoot, path).split(sep);
+  return rel[0] === 'app' || (rel.length === 1 && ['App.tsx', 'main.tsx'].includes(rel[0]));
+}
+
 function isFeatureEntry(path) {
   return /[\\/]features[\\/][^\\/]+[\\/]index\.tsx?$/.test(path);
 }
@@ -48,11 +57,22 @@ for (const file of sourceFiles(sourceRoot)) {
   for (const statement of ast.statements) {
     if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const target = resolveImport(file, statement.moduleSpecifier.text);
-    if (!target || !featureOf(target)) continue;
+    if (!target) continue;
 
     const fromFeature = featureOf(file);
     const toFeature = featureOf(target);
-    if (isFeatureEntry(target) || fromFeature === toFeature) continue;
+
+    if (fromFeature && isAppModule(target)) {
+      violations.push(`${sourcePath(file)} -> ${sourcePath(target)} (features must not import application modules)`);
+      continue;
+    }
+
+    if (isShared(file) && toFeature) {
+      violations.push(`${sourcePath(file)} -> ${sourcePath(target)} (shared code must not import features)`);
+      continue;
+    }
+
+    if (!toFeature || isFeatureEntry(target) || fromFeature === toFeature) continue;
 
     const pair = `${sourcePath(file)} -> ${sourcePath(target)}`;
     if (!allowed.has(pair)) violations.push(`${pair} (import through src/features/${toFeature}/index.ts)`);

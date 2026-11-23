@@ -1,104 +1,116 @@
-# Feature architecture
+# Architecture
 
-This document describes the target feature boundaries for the refactor. The drawing and projects feature indexes exist today. Selection, eraser, canvas, layers, properties, toolbar, export, and shared are planned ownership boundaries; their files and APIs are still being split in later steps. Until those steps are complete, paths below marked **current** remain in their existing location.
+This document records the feature boundaries and store composition in the code today. Feature dependencies below name imports between feature folders; shared types, helpers, and browser libraries are described separately.
 
-Cross-feature dependencies use the owning feature's `index.ts`. The shared area must not import from a feature, and features must not import from the app composition layer. Shared domain types may live in `src/types/`.
+## Application composition
 
-## App composition
-
-- **Purpose:** Assemble the application shell, feature panels, and shared UI.
-- **Owned files:** `src/App.tsx`, `src/main.tsx` (current).
-- **Public API:** No feature `index.ts`; app entry is `src/main.tsx`.
-- **State slice:** None; the app composes feature APIs and store hooks.
-- **Depends on:** Toolbar, canvas, layers, properties, export, projects, shared.
-- **Must not regress:** Startup hydration, autosave startup, theme setup, and app layout.
-
-## Drawing
-
-- **Purpose:** Define draw tools and create filled shapes and boundary lines/curves.
-- **Owned files:** Target: tool definitions and shape-creation handlers under `src/features/drawing/`. Current: `src/features/drawing/tools.ts`, `handlers/shapeDrawing.ts`, and drawing portions of `useCanvasInteractions.ts`.
-- **Public API:** `src/features/drawing/index.ts`; currently exports `TOOLS`, `TOOL_BY_KEY`, and `useCanvasInteractions` alongside rendering exports. Target: drawing tool metadata and creation-handler entry points.
-- **State slice:** `drawing` slice for active tool, surface kind, modifiers, and draft; creation actions such as `finishPolygon`. Current: `src/state/slices/drawing.ts`.
-- **Depends on:** Shared map types and geometry helpers; canvas for the pointer lifecycle through its public API.
-- **Must not regress:** Tool shortcuts, grid/Alt snapping behavior, polygon completion/cancel behavior, line and curve creation, shape kinds, and undo step grouping.
-
-## Selection
-
-- **Purpose:** Select and edit objects, vertices, and edges; box-select and detach polygon areas.
-- **Owned files:** Target: selection handlers and selection/handle rendering under `src/features/selection/`. Current: `src/features/drawing/handlers/select.ts`, selection portions of `CanvasNodes.tsx` and `useCanvasInteractions.ts`.
-- **Public API:** Target `src/features/selection/index.ts` exports selection handlers and selection overlays. This entry point does not exist yet.
-- **State slice:** `selection` slice owns selected object/edge, hover target, marquee and selection box. Current: `src/state/slices/selection.ts`.
-- **Depends on:** Shared map types and geometry; canvas pointer lifecycle; drawing render composition through public APIs.
-- **Must not regress:** Move, resize, rotate, Alt vertex dragging, insert/remove points, Ctrl+right-drag box selection, Ctrl+left-drag detach, editable detached vertices, and selection cleanup after undo/redo.
-
-## Eraser
-
-- **Purpose:** Erase swept surface areas and create openings in polygon boundaries.
-- **Owned files:** Target: eraser handlers and eraser-only visual helpers under `src/features/eraser/`. Current: `src/features/drawing/handlers/eraser.ts`, eraser portions of `useCanvasInteractions.ts`, and eraser actions in `src/state/slices/drawing.ts`.
-- **Public API:** Target `src/features/eraser/index.ts` exports area and edge-erasing handlers. This entry point does not exist yet.
-- **State slice:** Target eraser slice owns eraser mode and outline-erasure actions; currently those actions share `src/state/slices/drawing.ts`.
-- **Depends on:** Shared geometry/map types and canvas pointer lifecycle.
-- **Must not regress:** Left-drag erases only the swept area; Ctrl+left-drag boundary erasure; edge-only mode creates a true opening with independent vertices; undo commits a completed stroke correctly.
+- **Purpose:** Start React, restore the local project, and arrange the editor interface.
+- **Owned files:** `src/main.tsx`, `src/App.tsx`.
+- **Public API:** The application entry is `src/main.tsx`; it is not a feature barrel.
+- **State slice:** None. The application composes the editor store and feature interfaces.
+- **Feature imports:** Canvas, drawing, eraser, export, layers, projects, properties, selection, shared, and toolbar are used by the composed interface. Thin compatibility aliases still bridge some application imports; cleanup is planned in Step 3.
+- **Behaviors to preserve:** Initial project hydration, autosave startup, theme setup, and editor layout.
 
 ## Canvas
 
-- **Purpose:** Own viewport, grid, snap, coordinate conversion, shared pointer lifecycle, and map rendering.
-- **Owned files:** Target: `src/features/canvas/` including canvas stage, grid and sheet/object renderers. Current: `src/components/MapCanvas.tsx`, `src/features/drawing/CanvasNodes.tsx`, and shared lifecycle in `src/features/drawing/useCanvasInteractions.ts`.
-- **Public API:** Target `src/features/canvas/index.ts` exports the stage, grid/sheet renderers, and interaction hook. This entry point does not exist yet.
-- **State slice:** `canvas` slice owns view, viewport, zoom, pan, grid, snap, and grid size. Current: `src/state/slices/canvas.ts`; grid/snap toggles currently live in `src/state/slices/ui.ts`.
-- **Depends on:** Drawing, selection, and eraser public APIs; shared types and geometry; projects for document/background data.
-- **Must not regress:** Map-unit coordinates, centered and cursor-anchored zoom behavior, pan, grid alignment/density, snapping, pointer capture, and object render order.
+- **Purpose:** Render the map sheet and own viewport, grid, snapping, coordinate conversion, and the shared pointer lifecycle.
+- **Owned files:** `src/features/canvas/CanvasNodes.tsx`, `src/features/canvas/constants.ts`, `src/features/canvas/interactionTypes.ts`, `src/features/canvas/storeSlice.ts`, `src/features/canvas/useCanvasInteractions.ts`.
+- **Public API (`src/features/canvas/index.ts`):** `BackgroundImage`, `EditorOverlay`, `GridLines`, `SheetShapes`, `SELECTION_COLOR`, `useCanvasInteractions`, type `Drag`, `createCanvasSlice`, `MIN_SCALE`, `MAX_SCALE`.
+- **State slice:** `createCanvasSlice` in `storeSlice.ts`; owns viewport, zoom, pan, grid visibility, snapping, and grid size.
+- **Feature imports:** Drawing, eraser, and selection. Canvas calls their handlers from the shared pointer lifecycle and uses selection rendering. Drawing, eraser, and selection also reference canvas exports/types, so this dependency graph contains a cycle scheduled for removal in Step 2.
+- **Behaviors to preserve:** Map-unit coordinates, centered and cursor-anchored zoom, pan, grid alignment/density, snapping, pointer capture, and rendering order.
+
+## Drawing
+
+- **Purpose:** Define available tools and create map shapes and boundary lines/curves.
+- **Owned files:** `src/features/drawing/tools.ts`, `src/features/drawing/handlers/shapeDrawing.ts`, `src/features/drawing/storeSlice.ts`.
+- **Public API (`src/features/drawing/index.ts`):** `TOOLS`, `TOOL_BY_KEY`, `beginShapeDrawing`, `finishShapeDraft`, `moveShapeDraft`, `createDrawingSlice`, plus compatibility re-exports of canvas renderers and the interaction hook. The canvas compatibility re-exports are scheduled for removal in Step 3.
+- **State slice:** `createDrawingSlice` in `storeSlice.ts`; owns the active tool, surface kind, modifier/cursor state, draft shape, and polygon completion.
+- **Feature imports:** Canvas, through the compatibility re-exports in the drawing index.
+- **Behaviors to preserve:** Tool shortcuts, grid and Alt snapping, polygon completion/cancel behavior, line and curve creation, surface kinds, and undo grouping.
+
+## Eraser
+
+- **Purpose:** Erase swept map areas and open polygon boundaries.
+- **Owned files:** `src/features/eraser/handlers/eraser.ts`, `src/features/eraser/storeSlice.ts`.
+- **Public API (`src/features/eraser/index.ts`):** `beginEraser`, `finishBoundaryEraser`, `moveEraser`, `createEraserSlice`.
+- **State slice:** `createEraserSlice` in `storeSlice.ts`; owns eraser mode, area strokes, cutout subtraction, and polygon edge gaps.
+- **Feature imports:** Canvas, for the `Drag` type used by eraser handlers.
+- **Behaviors to preserve:** Normal drag erases only the path crossed; modifier boundary erasure; edge-only mode creates a true gap with separate endpoints; undo treats a completed gesture as one action.
+
+## Selection
+
+- **Purpose:** Select and edit shapes, edges, and vertices; box-select and detach polygon areas.
+- **Owned files:** `src/features/selection/SelectionOverlay.tsx`, `src/features/selection/storeSlice.ts`, `src/features/selection/handlers/point.ts`, `src/features/selection/handlers/select.ts`.
+- **Public API (`src/features/selection/index.ts`):** `SelectionOverlay`, type `SelectionOverlayProps`, `beginSelectTool`, `selectHoverTargetAt`, `selectionBoxIntersects`, `updateSelectDrag`, `handlePointTool`, `nearestPolygonEdge`, `POINT_HIT_PX`, `createSelectionSlice`.
+- **State slice:** `createSelectionSlice` in `storeSlice.ts`; owns selected shape/edge, hover target, marquee, and selection box.
+- **Feature imports:** Canvas, for the `Drag` type used by selection handlers.
+- **Behaviors to preserve:** Move, resize, rotate, hover highlight, Alt vertex dragging, point insertion, box selection, detach, editable detached vertices, and selection cleanup after undo/redo.
 
 ## Layers
 
-- **Purpose:** Show, select, hide, group, rename, and reorder map objects.
-- **Owned files:** Target: `src/features/layers/`; current UI is `src/components/LayersPanel.tsx`, state is in `src/state/slices/layers.ts`.
-- **Public API:** Target `src/features/layers/index.ts` exports the layers panel and layer/group helpers. This entry point does not exist yet.
-- **State slice:** Layers slice owns group selection, group membership, names, order, and visibility.
-- **Depends on:** Shared map types; selection and canvas APIs for selection/order behavior.
-- **Must not regress:** Stable back-to-front document order, front-to-back panel order, independent ungrouping, single-layer group addition, free reorder across group boundaries, and group movement.
+- **Purpose:** Display and manage map layers and groups.
+- **Owned files:** `src/features/layers/LayersPanel.tsx`, `src/features/layers/storeSlice.ts`.
+- **Public API (`src/features/layers/index.ts`):** `LayersPanel`, `layerNames`, `createLayersSlice`.
+- **State slice:** `createLayersSlice` in `storeSlice.ts`; owns group membership, names, order, visibility, and grouping selection.
+- **Feature imports:** None.
+- **Behaviors to preserve:** Stable back-to-front document order, front-to-back panel order, independent ungrouping, adding one layer to a group, reordering across group boundaries, and group movement.
 
 ## Properties
 
-- **Purpose:** Edit selected surfaces, elevation, edge outlines/widths, labels, and background settings.
-- **Owned files:** Target: `src/features/properties/`; current UI is `src/components/PropertiesPanel.tsx`, state is in `src/state/slices/properties.ts`.
-- **Public API:** Target `src/features/properties/index.ts` exports the properties panel. This entry point does not exist yet.
-- **State slice:** Properties slice owns surface/elevation/outline/label/background mutations.
-- **Depends on:** Shared map/project types, selection, and projects for background import.
-- **Must not regress:** Per-edge style changes affect only the selected edge, width presets, elevation shading, undo semantics, and background import behavior.
+- **Purpose:** Edit surface settings, elevation, outlines, labels, and background properties.
+- **Owned files:** `src/features/properties/PropertiesPanel.tsx`, `src/features/properties/storeSlice.ts`.
+- **Public API (`src/features/properties/index.ts`):** `PropertiesPanel`, `createPropertiesSlice`.
+- **State slice:** `createPropertiesSlice` in `storeSlice.ts`; owns surface/elevation/outline/label/background mutations.
+- **Feature imports:** Projects, for background image import.
+- **Behaviors to preserve:** Per-edge outline changes affect only the selected edge, width presets, elevation shading, undo semantics, and background import.
 
 ## Toolbar
 
-- **Purpose:** Provide tool selection, map/project controls, grid/snap/zoom controls, history controls, status and keyboard shortcuts.
-- **Owned files:** Target: `src/features/toolbar/`; current: `src/components/EditorToolbar.tsx`, `ToolRail.tsx`, `StatusBar.tsx`, and `src/hooks/useEditorShortcuts.ts`.
-- **Public API:** Target `src/features/toolbar/index.ts` exports toolbar, tool rail, status bar, and shortcut hook. This entry point does not exist yet.
-- **State slice:** No standalone toolbar slice; toolbar controls call drawing, canvas, project/history, and shared UI slices.
-- **Depends on:** Drawing, canvas, projects, export, and shared APIs.
-- **Must not regress:** Existing shortcut keys, map name editing, blank official-map reset behavior, grid/snap settings, undo/redo, theme selection, and status hints.
+- **Purpose:** Provide tool selection, project/map controls, grid/snap/zoom controls, history, status, and keyboard shortcuts.
+- **Owned files:** `src/features/toolbar/EditorToolbar.tsx`, `src/features/toolbar/ToolRail.tsx`, `src/features/toolbar/StatusBar.tsx`, `src/features/toolbar/useEditorShortcuts.ts`.
+- **Public API (`src/features/toolbar/index.ts`):** `EditorToolbar`, `ToolRail`, `StatusBar`, `useEditorShortcuts`.
+- **State slice:** None. Toolbar actions call drawing, canvas, project/history, and shared UI state.
+- **Feature imports:** Drawing and projects.
+- **Behaviors to preserve:** Tool shortcuts, map name editing, official-map reset, grid/snap controls, undo/redo, theme selection, and status hints.
 
 ## Export
 
-- **Purpose:** Export the current map as a transparent PNG.
-- **Owned files:** Target: `src/features/export/`; current UI is `src/components/ExportDialog.tsx` and painter is `src/lib/exportPng.ts`.
-- **Public API:** Target `src/features/export/index.ts` exports the export dialog and PNG entry point. This entry point does not exist yet.
-- **State slice:** None; reads the current project document.
-- **Depends on:** Projects/map document types and shared drawing data.
-- **Must not regress:** Transparent background, map-only output, shape/outline/elevation fidelity, hidden-object behavior, and export cancellation/sizing.
+- **Purpose:** Render and download the current map as a transparent PNG.
+- **Owned files:** `src/features/export/ExportDialog.tsx`, `src/features/export/exportPng.ts`.
+- **Public API (`src/features/export/index.ts`):** `ExportDialog`, `paintSheet`, `renderPng`.
+- **State slice:** None. Export reads the current document.
+- **Feature imports:** None.
+- **Behaviors to preserve:** Transparent background, map-only output, shape/outline/elevation fidelity, hidden-object behavior, and export sizing/cancellation.
 
 ## Projects
 
-- **Purpose:** Create, open, save, validate, import, autosave, and restore local map documents.
-- **Owned files:** `src/features/projects/` for project operations and sample documents; `src/hooks/useAutosave.ts`, `src/lib/storage.ts`, `validation.ts`, `image.ts`, and `download.ts` are current supporting modules.
-- **Public API:** `src/features/projects/index.ts`; currently exports project file operations and empty/sample documents.
-- **State slice:** Target document lifecycle and undo/redo history slice; currently in `src/state/slices/document.ts`.
-- **Depends on:** Shared map/project types and shared browser-storage/download utilities. It must not import UI components.
-- **Must not regress:** Versioned JSON compatibility, validation of imported data, autosave restore, empty-document initialization, image backgrounds, and legacy cutout migration.
+- **Purpose:** Create, validate, open, save, import, autosave, and restore local map documents.
+- **Owned files:** `src/features/projects/projectIO.ts`, `src/features/projects/sampleProject.ts`, `src/features/projects/storeSlice.ts`.
+- **Public API (`src/features/projects/index.ts`):** `importBackgroundImage`, `handleDroppedFile`, `openProjectFile`, `saveProjectFile`, `sampleDocument`, `emptyDocument`, `createDocumentSlice`.
+- **State slice:** `createDocumentSlice` in `storeSlice.ts`; owns project hydration, document edits, and undo/redo history.
+- **Feature imports:** None. Project I/O uses the central editor store directly.
+- **Behaviors to preserve:** Versioned JSON compatibility, import validation, autosave restore, empty-document initialization, image backgrounds, and legacy cutout migration.
 
 ## Shared
 
-- **Purpose:** Hold reusable UI and low-level helpers that do not belong to a single feature.
-- **Owned files:** Target `src/shared/`; current shared toast is `src/components/Toast.tsx`, common domain types are in `src/types/`, and pure utilities are in `src/lib/`.
-- **Public API:** Target `src/shared/index.ts` exports reusable primitives/helpers. This entry point does not exist yet.
-- **State slice:** Shared UI slice for theme/toast; currently `src/state/slices/ui.ts` also contains grid/snap actions that should move to canvas.
-- **Depends on:** Shared libraries and types only. **Must never import from `src/features/`.**
-- **Must not regress:** Toast lifecycle, browser theme persistence, shared schema/type compatibility, and pure helper determinism.
+- **Purpose:** Provide reusable interface and transient UI state used across the editor.
+- **Owned files:** `src/shared/Toast.tsx`, `src/shared/storeSlice.ts`.
+- **Public API (`src/shared/index.ts`):** `Toast`, `createUiSlice`.
+- **State slice:** `createUiSlice` in `storeSlice.ts`; owns toast and theme state.
+- **Feature imports:** None. Toast reads the central editor store.
+- **Behaviors to preserve:** Toast lifecycle and browser theme persistence.
+
+## Central state and helpers
+
+- `src/stores/editorStore.ts` composes feature slices. It imports slice modules directly to avoid loading feature UI barrels and creating a runtime initialization cycle.
+- `src/state/editorStoreTypes.ts` defines the shared Zustand contract used by the slices and store.
+- `src/state/editorStoreHelpers.ts` contains pure document and geometry helpers used across slices. These remain central because moving them into one feature would make other features depend on that feature and could reintroduce cycles.
+- `src/types/` contains map and project data types. `src/lib/` contains shared geometry, validation, persistence, export, image, and download utilities.
+
+## Import rules
+
+- Feature-to-feature imports go through the owning feature's `index.ts`.
+- The central store composer may import a feature's `storeSlice.ts` directly, plus canvas constants, to avoid runtime cycles.
+- Shared code does not import features, and features do not import application composition.
+- `scripts/check-import-boundaries.mjs` enforces these rules.

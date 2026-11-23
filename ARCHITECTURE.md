@@ -8,7 +8,7 @@ This document records the feature boundaries and store composition in the code t
 - **Owned files:** `src/main.tsx`, `src/App.tsx`.
 - **Public API:** The application entry is `src/main.tsx`; it is not a feature barrel.
 - **State slice:** None. The application composes the editor store and feature interfaces.
-- **Feature imports:** Canvas, drawing, eraser, export, layers, projects, properties, selection, shared, and toolbar are used by the composed interface. Thin compatibility aliases still bridge some application imports; cleanup is planned in Step 3.
+- **Feature imports:** Canvas, drawing, eraser, export, layers, projects, properties, shared, and toolbar are composed through their feature entry points. The map-sheet component handles the React/Konva stage composition.
 - **Behaviors to preserve:** Initial project hydration, autosave startup, theme setup, and editor layout.
 
 ## Canvas

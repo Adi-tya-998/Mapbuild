@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
-import { EditorToolbar } from './components/EditorToolbar';
-import { ExportDialog } from './components/ExportDialog';
-import { LayersPanel } from './components/LayersPanel';
+import { EditorToolbar, ToolRail, StatusBar, useEditorShortcuts } from './features/toolbar';
+import { ExportDialog } from './features/export';
+import { LayersPanel } from './features/layers';
 import { MapCanvas } from './components/MapCanvas';
-import { PropertiesPanel } from './components/PropertiesPanel';
-import { StatusBar } from './components/StatusBar';
-import { ToolRail } from './components/ToolRail';
+import { PropertiesPanel } from './features/properties';
 import { sampleDocument } from './features/projects';
 import { useAutosave } from './hooks/useAutosave';
-import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { loadAutosave, saveTheme } from './lib/storage';
 import { useEditorStore } from './stores/editorStore';
 

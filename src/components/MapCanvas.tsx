@@ -9,7 +9,7 @@ import { handleDroppedFile } from '../features/projects';
 import { loadImage } from '../lib/image';
 import { findShape, useEditorStore } from '../stores/editorStore';
 import { SHEET_SIZE } from '../types/map';
-import { Toast } from './Toast';
+import { Toast } from '../shared';
 
 function useBackgroundImage(dataUrl: string | undefined) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);

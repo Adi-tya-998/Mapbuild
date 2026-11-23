@@ -1,4 +1,4 @@
-import type { MapObject, Point, XY } from '../../types/map';
+import type { MapObject, Point, XY } from '../types/map';
 
 /** Per-pointer gesture state shared by tool handlers and the canvas event lifecycle. */
 export type Drag =
@@ -10,3 +10,6 @@ export type Drag =
   | { mode: 'detach-area'; start: XY; end: XY }
   | { mode: 'rotate'; id: string; center: Point; startAngle: number; original: MapObject }
   | { mode: 'vertex'; id: string; index: number; free: boolean };
+
+export const MIN_SCALE = 0.3;
+export const MAX_SCALE = 24;

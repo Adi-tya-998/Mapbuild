@@ -1,4 +1,4 @@
 {
-  "description": "Feature-to-feature imports must use the owning feature's index.ts. The central editorStore.ts composer may import a feature's storeSlice.ts directly to avoid runtime barrel cycles. Shared code must not import features, and features must not import app modules.",
+  "description": "Feature-to-feature imports must use the owning feature's index.ts and must remain acyclic. The central editorStore.ts composer may import a feature's storeSlice.ts directly to avoid runtime barrel cycles. Shared code must not import features, and features must not import app modules.",
   "allowedInternalImports": []
 }

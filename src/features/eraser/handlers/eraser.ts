@@ -2,7 +2,7 @@ import { circleRadius, labelBox, nearestPathEdge, pointInPolygon } from '../../.
 import type { EditorState } from '../../../stores/editorStore';
 import { ERASER_WIDTH } from '../../../types/map';
 import type { MapObject, Point, XY } from '../../../types/map';
-import type { Drag } from '../../canvas';
+import type { Drag } from '../../../lib/editorInteraction';
 
 const ERASER_HIT_PX = 8;
 

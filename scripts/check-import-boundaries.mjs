@@ -10,6 +10,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = resolve(root, 'src');
 const config = JSON.parse(readFileSync(resolve(root, 'import-boundaries.json'), 'utf8'));
 const allowed = new Set(config.allowedInternalImports.map(({ from, to }) => `${from} -> ${to}`));
+const files = sourceFiles(sourceRoot);
+const featureDependencies = new Map();
+for (const file of files) {
+  const feature = featureOf(file);
+  if (feature && !featureDependencies.has(feature)) featureDependencies.set(feature, new Set());
+}
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap((name) => {
@@ -52,7 +58,7 @@ function isFeatureEntry(path) {
 }
 
 const violations = [];
-for (const file of sourceFiles(sourceRoot)) {
+for (const file of files) {
   const ast = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   for (const statement of ast.statements) {
     if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
@@ -61,6 +67,10 @@ for (const file of sourceFiles(sourceRoot)) {
 
     const fromFeature = featureOf(file);
     const toFeature = featureOf(target);
+
+    if (fromFeature && toFeature && fromFeature !== toFeature) {
+      featureDependencies.get(fromFeature).add(toFeature);
+    }
 
     if (fromFeature && isAppModule(target)) {
       violations.push(`${sourcePath(file)} -> ${sourcePath(target)} (features must not import application modules)`);
@@ -79,17 +89,39 @@ for (const file of sourceFiles(sourceRoot)) {
     // runtime initialization cycle.
     const isStoreComposer = sourcePath(file) === 'src/stores/editorStore.ts';
     const isStoreSlice = /[\\/]storeSlice\.ts$/.test(target);
-    const isCanvasConstant = sourcePath(target) === 'src/features/canvas/constants.ts';
-    if (isStoreComposer && (isStoreSlice || isCanvasConstant)) continue;
+    if (isStoreComposer && isStoreSlice) continue;
 
     const pair = `${sourcePath(file)} -> ${sourcePath(target)}`;
     if (!allowed.has(pair)) violations.push(`${pair} (import through src/features/${toFeature}/index.ts)`);
   }
 }
 
+const cyclePaths = new Set();
+const visitedFeatures = new Set();
+const activePath = [];
+function visitFeature(feature) {
+  const activeIndex = activePath.indexOf(feature);
+  if (activeIndex >= 0) {
+    cyclePaths.add([...activePath.slice(activeIndex), feature].join(' -> '));
+    return;
+  }
+  if (visitedFeatures.has(feature)) return;
+
+  activePath.push(feature);
+  for (const dependency of featureDependencies.get(feature) ?? []) visitFeature(dependency);
+  activePath.pop();
+  visitedFeatures.add(feature);
+}
+for (const feature of featureDependencies.keys()) visitFeature(feature);
+
+const failures = [
+  ...violations,
+  ...[...cyclePaths].map((cycle) => `feature dependency cycle: ${cycle}`),
+];
+
 assert.equal(
-  violations.length,
+  failures.length,
   0,
-  `${violations.length} feature boundary violation(s):\n${violations.map((violation) => `- ${violation}`).join('\n')}`,
+  `${failures.length} feature boundary violation(s):\n${failures.map((failure) => `- ${failure}`).join('\n')}`,
 );
-process.stdout.write(`Feature import boundaries passed (${allowed.size} configured cross-feature exceptions).\n`);
+process.stdout.write(`Feature import boundaries passed; no feature dependency cycles found (${allowed.size} configured cross-feature exceptions).\n`);

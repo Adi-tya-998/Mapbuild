@@ -10,7 +10,7 @@ Only edit files inside the feature named in the task. Do not touch other feature
 
 ## Architecture and ownership
 
-- `src/features/canvas/`: sheet rendering, viewport/grid/snap state, pointer lifecycle, and canvas interaction types.
+- `src/features/canvas/`: sheet rendering, viewport/grid/snap state, and the shared pointer lifecycle.
 - `src/features/drawing/`: tool metadata, shape creation handlers, and drawing state.
 - `src/features/eraser/`: eraser handlers and eraser state.
 - `src/features/selection/`: selection and point handlers, selection overlays, and selection state.
@@ -23,12 +23,13 @@ Only edit files inside the feature named in the task. Do not touch other feature
 - `src/App.tsx` and `src/main.tsx`: application startup and feature composition. Keep application composition out of feature modules.
 - `src/stores/editorStore.ts`: public Zustand store contract and slice composition. It imports each feature's `storeSlice.ts` directly to avoid loading UI barrels and creating runtime cycles. Keep `useEditorStore`, selector usage, and action signatures stable unless a task requires an API change.
 - `src/state/editorStoreTypes.ts`: shared store types. `src/state/editorStoreHelpers.ts`: pure document/geometry helpers used across feature slices; both remain central to prevent one feature from owning shared contracts/helpers and creating feature dependencies.
+- `src/lib/editorInteraction.ts`: shared drag-state type and zoom limits. Low-level modules may depend on shared types, but must never import a feature.
 - `src/types/`: map objects, editor tools, and project file types. `src/lib/`: geometry, validation, persistence, export, image, and download utilities.
 - `tests/characterization.test.mjs`: behavior checks for project data, geometry, store actions, drawing, erasing/cutouts/detach, and PNG painting.
 
 ## Dependency boundaries
 
-Feature-to-feature imports must use the owning feature's `index.ts`; imports within a feature may use its private files. The central store composer may import feature `storeSlice.ts` modules directly, plus canvas constants, to avoid runtime initialization cycles. Shared modules cannot import features, and feature modules cannot import application composition. Keep `import-boundaries.json` and `scripts/check-import-boundaries.mjs` aligned with these rules.
+Feature-to-feature imports must use the owning feature's `index.ts`; imports within a feature may use its private files. The central store composer may import feature `storeSlice.ts` modules directly, plus low-level shared constants, to avoid runtime initialization cycles. The feature dependency graph must remain acyclic. Shared modules cannot import features, and feature modules cannot import application composition. Keep `import-boundaries.json` and `scripts/check-import-boundaries.mjs` aligned with these rules.
 
 Run `npm run check:boundaries` after changing feature imports.
 

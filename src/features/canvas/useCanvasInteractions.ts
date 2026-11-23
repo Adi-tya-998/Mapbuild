@@ -6,7 +6,7 @@ import type { XY } from '../../types/map';
 import { beginEraser, finishBoundaryEraser, moveEraser } from '../eraser';
 import { handlePointTool, nearestPolygonEdge, POINT_HIT_PX, beginSelectTool, selectHoverTargetAt, selectionBoxIntersects, updateSelectDrag } from '../selection';
 import { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from '../drawing';
-import type { Drag } from './interactionTypes';
+import type { Drag } from '../../lib/editorInteraction';
 
 /**
  * Pointer interactions for the map sheet: drawing, selecting, moving, vertex editing, panning and zooming.

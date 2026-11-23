@@ -13,7 +13,7 @@ import { fitTransform } from '../lib/geometry';
 import { emptyDocument } from '../lib/emptyDocument';
 import { loadTheme } from '../lib/storage';
 
-export { MIN_SCALE, MAX_SCALE } from '../features/canvas/constants';
+export { MIN_SCALE, MAX_SCALE } from '../lib/editorInteraction';
 
 export { findShape, mapShape, snapshot, closedRing, geometryShapes, filledGeometry, subtractCutout, bakeLegacyCutoutLayers, sameContent } from '../state/editorStoreHelpers';
 

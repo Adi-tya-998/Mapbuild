@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type { EditorState } from '../../state/editorStoreTypes';
 import { clamp, fitTransform } from '../../lib/geometry';
-import { MAX_SCALE, MIN_SCALE } from './constants';
+import { MAX_SCALE, MIN_SCALE } from '../../lib/editorInteraction';
 
 type Slice = Pick<EditorState, 'setViewport' | 'fitView' | 'zoomAt' | 'panBy' | 'toggleGrid' | 'toggleSnap' | 'setGridSize'>;
 export const createCanvasSlice: StateCreator<EditorState, [], [], Slice> = (set, get) => ({

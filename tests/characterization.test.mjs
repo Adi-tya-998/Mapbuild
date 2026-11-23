@@ -33,7 +33,8 @@ const drawingHandlers = require('../src/features/drawing/handlers/shapeDrawing.t
 const { rectPts, snapValue, pointInPolygon } = geometry;
 const { parseProject, parseProjectText, serializeProject, ProjectParseError } = validation;
 const { useEditorStore } = storeModule;
-const { paintSheet } = exportModule;
+const { paintSheet, renderPng } = exportModule;
+const { elevationFill } = require('../src/types/map.ts');
 
 const floorRect = (id = 'floor-1') => ({
   id,
@@ -123,6 +124,77 @@ test('store add, undo, and redo preserve document history', () => {
   assert.equal(useEditorStore.getState().doc.shapes.length, 0);
   useEditorStore.getState().redo();
   assert.equal(useEditorStore.getState().doc.shapes[0].id, shape.id);
+});
+
+test('layers can be grouped, add a member, and ungroup one member independently', () => {
+  const shapes = [floorRect('back'), floorRect('middle'), floorRect('front')];
+  resetStore(shapes);
+  const state = useEditorStore.getState();
+  for (const shape of shapes) state.toggleGroupingSelection(shape.id);
+  useEditorStore.getState().groupSelectedLayers();
+
+  let grouped = useEditorStore.getState().doc.shapes;
+  const groupId = grouped[0].groupId;
+  assert.ok(groupId);
+  assert.deepEqual(grouped.map((shape) => shape.id), ['back', 'middle', 'front']);
+  assert.equal(grouped.every((shape) => shape.groupId === groupId), true);
+
+  const extra = floorRect('extra');
+  useEditorStore.getState().addShape(extra);
+  useEditorStore.getState().addLayerToGroup(extra.id, groupId);
+  grouped = useEditorStore.getState().doc.shapes;
+  assert.deepEqual(grouped.map((shape) => shape.id), ['back', 'middle', 'front', 'extra']);
+  assert.equal(grouped.at(-1).groupId, groupId);
+
+  useEditorStore.getState().toggleGroupingSelection('back');
+  useEditorStore.getState().ungroupSelectedLayers();
+  grouped = useEditorStore.getState().doc.shapes;
+  assert.equal(grouped.find((shape) => shape.id === 'back').groupId, undefined);
+  assert.equal(grouped.filter((shape) => shape.id !== 'back').every((shape) => shape.groupId === groupId), true);
+});
+
+test('layers and groups reorder without changing group membership or member order', () => {
+  const groupId = 'group-a';
+  const shapes = [
+    floorRect('member-1'),
+    { ...floorRect('member-2'), groupId },
+    { ...floorRect('member-3'), groupId },
+    floorRect('solo'),
+  ];
+  resetStore(shapes);
+
+  useEditorStore.getState().reorderGroup(groupId, 'solo', 'layer', 'before');
+  let reordered = useEditorStore.getState().doc.shapes;
+  assert.deepEqual(reordered.map((shape) => shape.id), ['member-1', 'solo', 'member-2', 'member-3']);
+  assert.deepEqual(reordered.slice(-2).map((shape) => shape.id), ['member-2', 'member-3']);
+  assert.equal(reordered.filter((shape) => shape.groupId === groupId).length, 2);
+
+  useEditorStore.getState().reorderLayer('member-1', groupId, 'group', 'before');
+  reordered = useEditorStore.getState().doc.shapes;
+  assert.equal(reordered.find((shape) => shape.id === 'member-1').groupId, undefined);
+  assert.deepEqual(reordered.filter((shape) => shape.groupId === groupId).map((shape) => shape.id), ['member-2', 'member-3']);
+});
+
+test('properties update only the selected edge and clamp surface elevation', () => {
+  resetStore([floorRect()]);
+  const state = useEditorStore.getState();
+  state.select('floor-1');
+  state.selectEdge(1);
+  state.setSelectedEdgeOutline('white');
+  state.setSelectedOutlineWidth(2.5);
+
+  let shape = useEditorStore.getState().doc.shapes[0];
+  assert.equal(shape.edgeOutlines[1], 'white');
+  assert.deepEqual(shape.edgeOutlines.filter((_, index) => index !== 1), []);
+  assert.equal(shape.edgeWidths[1], 2.5);
+  assert.deepEqual(shape.edgeWidths.filter((_, index) => index !== 1), []);
+
+  state.patchElevation('floor-1', 7);
+  shape = useEditorStore.getState().doc.shapes[0];
+  assert.equal(shape.elevation, 7);
+  assert.notEqual(elevationFill('floor', -10), elevationFill('floor', 10));
+  state.patchElevation('floor-1', 99);
+  assert.equal(useEditorStore.getState().doc.shapes[0].elevation, 10);
 });
 
 test('area eraser stores a continuous stroke on the target shape', () => {
@@ -227,4 +299,39 @@ test('PNG painter draws visible shapes but does not paint a white sheet backgrou
   });
   assert.equal(calls.some(([name]) => name === 'fillRect'), false);
   assert.equal(calls.filter(([name]) => name === 'fill').length, 1);
+});
+
+test('PNG export creates a square canvas at the requested pixel size', async () => {
+  const transforms = [];
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => context,
+    toBlob(callback, type) {
+      assert.equal(type, 'image/png');
+      callback(new Blob([], { type }));
+    },
+  };
+  const context = { canvas, setTransform: (...args) => transforms.push(args) };
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      createElement: (tag) => {
+        assert.equal(tag, 'canvas');
+        return canvas;
+      },
+      fonts: { load: async () => [] },
+    },
+  });
+
+  try {
+    const blob = await renderPng({ name: 'Sizing', shapes: [], background: null }, 512);
+    assert.deepEqual([canvas.width, canvas.height], [512, 512]);
+    assert.deepEqual(transforms[0], [512 / 360, 0, 0, 512 / 360, 0, 0]);
+    assert.equal(blob.type, 'image/png');
+  } finally {
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument);
+    else delete globalThis.document;
+  }
 });

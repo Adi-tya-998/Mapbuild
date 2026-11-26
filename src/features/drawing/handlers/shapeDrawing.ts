@@ -1,7 +1,32 @@
 import { createId } from '../../../lib/id';
 import { rectPts, HIT_PX } from '../../../lib/geometry';
 import type { EditorState } from '../../../stores/editorStore';
-import type { Point, Tool, XY } from '../../../types/map';
+import type { MapObject, Point, Tool, XY } from '../../../types/map';
+
+export interface LineEndpointMatch {
+  shapeId: string;
+  index: number;
+  point: Point;
+}
+
+/** Finds a visible line endpoint within the same screen-space tolerance as editable vertices. */
+export function nearestLineEndpoint(shapes: MapObject[], point: XY, scale: number): LineEndpointMatch | null {
+  let nearest: LineEndpointMatch | null = null;
+  let nearestDistance = HIT_PX;
+  for (const shape of shapes) {
+    if (shape.hidden || shape.type !== 'line') continue;
+    for (const index of [0, shape.pts.length - 1]) {
+      const endpoint = shape.pts[index];
+      if (!endpoint) continue;
+      const distance = Math.hypot(point.x - endpoint[0], point.y - endpoint[1]) * scale;
+      if (distance <= nearestDistance) {
+        nearest = { shapeId: shape.id, index, point: endpoint };
+        nearestDistance = distance;
+      }
+    }
+  }
+  return nearest;
+}
 
 /** Starts or advances a drawing tool draft. The canvas still owns pointer capture and coordinates. */
 export function beginShapeDrawing(s: EditorState, tool: Tool, point: XY, snappedPoint: XY): boolean {
@@ -14,7 +39,9 @@ export function beginShapeDrawing(s: EditorState, tool: Tool, point: XY, snapped
     return true;
   }
   if (tool === 'line') {
-    s.setDraft({ type: 'line', a: snappedPoint, b: snappedPoint });
+    const endpoint = nearestLineEndpoint(s.doc.shapes, point, s.view.scale);
+    const start = endpoint ? { x: endpoint.point[0], y: endpoint.point[1] } : snappedPoint;
+    s.setDraft({ type: 'line', a: start, b: start });
     return true;
   }
   if (tool === 'curve') {

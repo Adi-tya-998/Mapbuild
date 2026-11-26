@@ -101,6 +101,27 @@ test('extracted shape drawing handler starts, updates, and commits a rectangle d
   assert.deepEqual(shape.pts, [[10, 20], [80, 20], [80, 90], [10, 90]]);
 });
 
+test('line drawing snaps to an existing endpoint and commits a separate line', () => {
+  const original = { id: 'line-a', type: 'line', kind: 'floor', pts: [[21, 21], [60, 60]] };
+  resetStore([original]);
+  const state = useEditorStore.getState();
+
+  assert.deepEqual(drawingHandlers.nearestLineEndpoint(state.doc.shapes, { x: 22, y: 21 }, state.view.scale), {
+    shapeId: 'line-a', index: 0, point: [21, 21],
+  });
+  drawingHandlers.beginShapeDrawing(state, 'line', { x: 22, y: 21 }, { x: 20, y: 20 });
+  assert.deepEqual(useEditorStore.getState().draft.a, { x: 21, y: 21 });
+  drawingHandlers.moveShapeDraft(useEditorStore.getState(), { x: 100, y: 100 }, { x: 100, y: 100 });
+  drawingHandlers.finishShapeDraft(useEditorStore.getState());
+
+  const lines = useEditorStore.getState().doc.shapes;
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].id, 'line-a');
+  assert.equal(lines[1].type, 'line');
+  assert.notEqual(lines[1].id, lines[0].id);
+  assert.deepEqual(lines[1].pts[0], [21, 21]);
+});
+
 test('extracted point and select handlers retain vertex insertion and movement behavior', () => {
   const original = floorRect();
   resetStore([original]);

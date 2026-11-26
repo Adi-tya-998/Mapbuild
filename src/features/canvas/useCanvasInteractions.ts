@@ -5,7 +5,7 @@ import { findShape, mapShape, useEditorStore } from '../../stores/editorStore';
 import type { XY } from '../../types/map';
 import { beginEraser, finishBoundaryEraser, moveEraser } from '../eraser';
 import { handlePointTool, nearestPolygonEdge, POINT_HIT_PX, beginSelectTool, selectHoverTargetAt, selectionBoxIntersects, updateSelectDrag } from '../selection';
-import { beginShapeDrawing, finishShapeDraft, moveShapeDraft } from '../drawing';
+import { beginShapeDrawing, finishShapeDraft, moveShapeDraft, nearestLineEndpoint } from '../drawing';
 import type { Drag } from '../../lib/editorInteraction';
 
 /**
@@ -112,6 +112,10 @@ export function useCanvasInteractions(hostRef: RefObject<HTMLDivElement>): void 
         s.setHoverTarget(null);
         const edge = nearestPolygonEdge(s.doc.shapes, p);
         host.style.cursor = edge && edge.distance * s.view.scale <= POINT_HIT_PX ? 'copy' : 'crosshair';
+      } else if (s.tool === 'line' && !s.draft && !drag) {
+        const endpoint = nearestLineEndpoint(s.doc.shapes, p, s.view.scale);
+        s.setHoverTarget(endpoint ? { shapeId: endpoint.shapeId, part: 'vertex', index: endpoint.index } : null);
+        host.style.cursor = endpoint ? 'pointer' : 'crosshair';
       } else if (s.tool !== 'select') {
         s.setHoverTarget(null);
       }
